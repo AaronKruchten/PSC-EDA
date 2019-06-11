@@ -2,6 +2,7 @@ library(influxdbr)
 library(testit)
 library(sets)
 
+
 #directory is a string of the file directory where we want to read data
 #measurements are the flow measurements we want in a string separated by commas
 #example: "CurCwnd,CurRTO,FastRetran,Nagle,RetranThresh,SlowStart"
@@ -12,6 +13,8 @@ library(sets)
 #interesting_measurements = "CurCwnd,CurRTO,FastRetran,Nagle,RetranThresh,SlowStart,CongAvoid,DataOctetsOut,DataSegsOut,OctetsRetrans,SegsRetrans"
 #result = form_dataframe(directory = file_directory,measurements = interesting_measurements)
 #View(result)
+
+#forms a dataframe for the measurments given from a directory outputted from query_all_single_flow
 form_dataframe <- function(directory,measurements){
   #search through directory and load in frames we want into a list
   files <- list.files(path = directory)
