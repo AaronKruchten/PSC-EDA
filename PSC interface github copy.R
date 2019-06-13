@@ -1,5 +1,4 @@
 library(influxdbr)
-library(testit)
 
 
 
@@ -13,8 +12,6 @@ library(testit)
 #interesting_measurements = "CurCwnd,CurRTO,FastRetran,Nagle,RetranThresh,SlowStart,CongAvoid,DataOctetsOut,DataSegsOut,OctetsRetrans,SegsRetrans"
 #result = form_dataframe(directory = file_directory,measurements = interesting_measurements)
 #View(result)
-
-#forms a dataframe for the measurments given from a directory outputted from query_all_single_flow
 form_dataframe <- function(directory,measurements){
   #search through directory and load in frames we want into a list
   files <- list.files(path = directory)
@@ -48,14 +45,11 @@ form_dataframe <- function(directory,measurements){
   
   #fill in new matrix with data
   for(i in 2:ncol(new_matrix)){
-    assert(i - 1 <= length(data_frame_lst))
+    print(i)
+    print(length(time_values))
     curr_frame = data_frame_lst[[i - 1]]
     data_frame_index = 1
     for(j in 1:length(time_values)){
-      assert(data_frame_index <= nrow(curr_frame) + 1)
-      assert(i <= length(time_values))
-      assert(j <= nrow(new_matrix))
-      assert(i <= ncol(new_matrix))
       if(data_frame_index <= nrow(curr_frame) & curr_frame$time[data_frame_index] == time_values[j]){
         new_matrix[j,i] = curr_frame[data_frame_index,3]
         data_frame_index = data_frame_index + 1
