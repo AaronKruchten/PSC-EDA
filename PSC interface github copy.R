@@ -12,6 +12,7 @@ library(influxdbr)
 #interesting_measurements = "CurCwnd,CurRTO,FastRetran,Nagle,RetranThresh,SlowStart,CongAvoid,DataOctetsOut,DataSegsOut,OctetsRetrans,SegsRetrans"
 #result = form_dataframe(directory = file_directory,measurements = interesting_measurements)
 #View(result)
+
 form_dataframe <- function(directory,measurements){
   #search through directory and load in frames we want into a list
   files <- list.files(path = directory)
@@ -20,6 +21,8 @@ form_dataframe <- function(directory,measurements){
   data_frame_lst_index = 1
   min_time_vector = c()
   max_time_vector = c()
+  names_vector = c()
+  names_index = 1
   for(i in 1:length(files)){
     curr_measurement = get_measurement_name(files[i])
     if(curr_measurement %in% measurement_vector){
@@ -30,6 +33,11 @@ form_dataframe <- function(directory,measurements){
       min_time_vector[data_frame_lst_index]  = format(min(as.POSIXct(new_frame$time)),'%Y-%m-%d %H:%M')
       max_time_vector[data_frame_lst_index] = format(max(as.POSIXct(new_frame$time)),'%Y-%m-%d %H:%M')
       data_frame_lst_index = data_frame_lst_index + 1
+      names_vector[names_index] = curr_measurement
+      names_index = names_index + 1
+    } else {
+      print("Invalid Measurement")
+      print(curr_measurement)
     }
   }
   
@@ -40,15 +48,14 @@ form_dataframe <- function(directory,measurements){
   min_time = as.POSIXct(min_time)
   max_time = as.POSIXct(max_time) + one_minute
   time_values = format(seq(min_time,max_time,by = "min"),'%Y-%m-%d %H:%M')
-  new_matrix = matrix(nrow = length(time_values),ncol = length(measurement_vector) + 1)
+  new_matrix = matrix(nrow = length(time_values),ncol = length(data_frame_lst) + 1)
   new_matrix[,1] = time_values
   
   #fill in new matrix with data
   for(i in 2:ncol(new_matrix)){
-    print(i)
-    print(length(time_values))
     curr_frame = data_frame_lst[[i - 1]]
     data_frame_index = 1
+    print(i)
     for(j in 1:length(time_values)){
       if(data_frame_index <= nrow(curr_frame) & curr_frame$time[data_frame_index] == time_values[j]){
         new_matrix[j,i] = curr_frame[data_frame_index,3]
@@ -61,7 +68,7 @@ form_dataframe <- function(directory,measurements){
     data_frame_index = 1
   }
   #convert matrix to a dataframe and remove rows with all na
-  names = append(c("time"),measurement_vector)
+  names = append(c("time"),names_vector)
   final_frame = as.data.frame(new_matrix)
   colnames(final_frame) = names
   return(remove_na_rows(final_frame))
