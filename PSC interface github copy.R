@@ -161,9 +161,10 @@ query_all_single_flow <- function(flow_name,database,save_location,username,pass
 #note that there are many R packages for imputation but none would behave in a reasonable way for our data
 #k = 10 works well
 impute_frame <- function(df,k){
-  imputed_frame = data.frame(df)
+  time = df$time
+  imputed_frame = convert_to_numeric(df)
   for(i in 1:ncol(df)){
-    current_col = df[,i]
+    current_col = imputed_frame[,i]
     for(j in 1:length(current_col)){
       if(is.na(current_col[j])){
         #Impute function helper
@@ -173,7 +174,19 @@ impute_frame <- function(df,k){
     }
     imputed_frame[,i] = current_col
   }
+  imputed_frame$time = time
   return(imputed_frame)
+}
+
+#convert a data frame to numeric
+convert_to_numeric <- function(df){
+  time = df$Time
+  df$Time = c()
+  for(i in 1:ncol(df)){
+    df[,i] = as.numeric(as.character(df[,i]))
+  }
+  df$Time = time
+  return(df)
 }
 
 #imputes a single vector using a nearest neighbors like implementation. helper for impute frame function
