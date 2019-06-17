@@ -35,9 +35,6 @@ form_dataframe <- function(directory,measurements){
       data_frame_lst_index = data_frame_lst_index + 1
       names_vector[names_index] = curr_measurement
       names_index = names_index + 1
-    } else {
-      print("Invalid Measurement")
-      print(curr_measurement)
     }
   }
   
@@ -55,7 +52,6 @@ form_dataframe <- function(directory,measurements){
   for(i in 2:ncol(new_matrix)){
     curr_frame = data_frame_lst[[i - 1]]
     data_frame_index = 1
-    print(i)
     for(j in 1:length(time_values)){
       if(data_frame_index <= nrow(curr_frame) & curr_frame$time[data_frame_index] == time_values[j]){
         new_matrix[j,i] = curr_frame[data_frame_index,3]
@@ -162,6 +158,7 @@ query_all_single_flow <- function(flow_name,database,save_location,username,pass
 #k = 10 works well
 impute_frame <- function(df,k){
   time = df$time
+  df$time = c()
   imputed_frame = convert_to_numeric(df)
   for(i in 1:ncol(df)){
     current_col = imputed_frame[,i]
@@ -180,12 +177,9 @@ impute_frame <- function(df,k){
 
 #convert a data frame to numeric
 convert_to_numeric <- function(df){
-  time = df$Time
-  df$Time = c()
   for(i in 1:ncol(df)){
     df[,i] = as.numeric(as.character(df[,i]))
   }
-  df$Time = time
   return(df)
 }
 
