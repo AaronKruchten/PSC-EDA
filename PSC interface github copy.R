@@ -8,7 +8,7 @@ library(influxdbr)
 #directory should be filled with files created by query_all_single_flow
 
 #EXAMPLE
-#file_directory = "/Users/aaronkruchten/Desktop/test query"
+#file_directory = "/Users/aaronkruchten/Desktop/test query/"
 #interesting_measurements = "CurCwnd,CurRTO,FastRetran,Nagle,RetranThresh,SlowStart,CongAvoid,DataOctetsOut,DataSegsOut,OctetsRetrans,SegsRetrans"
 #result = form_dataframe(directory = file_directory,measurements = interesting_measurements)
 #View(result)
