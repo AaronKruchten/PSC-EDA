@@ -150,6 +150,31 @@ query_all_single_flow <- function(flow_name,database,save_location,username,pass
   }
 }
 
+#copied and pasted just because I didn't want to break previous code that called query_all_single_flow
+#measures are same convention as before
+query_all_single_flow_arbitrary_measures <- function(flow_name,database,save_location,username,password,measurements){
+  setwd(save_location)
+  flow_name = paste("'",flow_name,"'",sep ="")
+  begin_query = "Select value FROM "
+  middle_query = " WHERE flow = "
+  measurement_vector <- strsplit(x = measurements,split = ",")[[1]]
+  query_vector <- measurement_vector
+  connection <- influx_connection(scheme = "http",host = "influx.blearndata.net",port = 8086,user = username,pass = password)
+  for(i in 1:length(query_vector)){
+    measurement = query_vector[i]
+    query_string = paste(begin_query,measurement,middle_query,flow_name,sep="")
+    new_query = influx_query(connection,db = database,query = query_string,return_xts = FALSE)
+    new_frame = new_query[[1]]
+    new_frame$statement_id = c()
+    new_frame$series_names = c()
+    new_frame$series_tags = c()
+    new_frame$series_partial = c()
+    new_frame$time = format(new_frame$time,'%Y-%m-%d %H:%M')
+    file_name = paste(flow_name,"_",query_vector[i],".csv",sep="")
+    write.csv(new_frame,file_name)
+  }
+}
+
 
 #df = data frame
 #k is number of neighbors
