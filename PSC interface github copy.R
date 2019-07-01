@@ -223,6 +223,65 @@ impute_vector <- function(vector,index,k){
   }
 }
 
+
+#function returns a time series data frame for the given measurments. Removes all rows with Just NAs. Rounds time to nearest minute and
+#fills in NA if we have missing data for a measurement for a given time. 
+query_by_flow <- function(flow_name,measurements,database,username,password){
+  #create and call query
+  begin_query = "Select value FROM "
+  middle_query = " WHERE flow = "
+  flow_name = paste("'",flow_name,"'",sep="")
+  query_string = paste(begin_query,measurements,middle_query,flow_name,sep="")
+  connection <- influx_connection(scheme = "http",host = "influx.blearndata.net",port = 8086,user = username,pass = password)
+  new_query = influx_query(connection,db = database,query = query_string,return_xts = FALSE)
+  
+  #initialize data frame
+  data_frame = new_query[[1]]
+  data_frame$statement_id = c()
+  data_frame$series_tags = c()
+  data_frame$series_partial = c()
+  
+  
+  #create time series skipping by minute for oldest and most recent time observed in our data
+  min_time = min(data_frame$time)
+  max_time = max(data_frame$time)
+  print(typeof(min_time))
+  print(typeof(max_time))
+  time_values = format(seq(min_time,max_time+60,by = "min"),'%Y-%m-%d %H:%M')
+  
+  
+  #remove duplicates
+  data_frame$time = format(data_frame$time,'%Y-%m-%d %H:%M')
+  data_frame = unique(data_frame)
+  
+  #parse measurments and create new matrix
+  measurement_vector <- strsplit(x = measurements,split = ",")[[1]]
+  number_of_time_measuresments = length(time_values)
+  number_of_measurements = length(measurement_vector)
+  new_matrix = matrix(nrow = length(time_values),ncol = length(measurement_vector) + 1)
+  new_matrix[,1] = time_values
+  data_frame_index = 1
+  
+  #fill in the new matrix. Puts in NA if we don't have a measurement for that minute
+  for(i in 2:(number_of_measurements +1)){
+    for(j in 1:number_of_time_measuresments){
+      #this assert will often fail if there are typos in the metrics inputted
+      assert(j <= length(time_values))
+      if(data_frame_index <= length(data_frame$time) && data_frame$time[data_frame_index] == time_values[j]){
+        new_matrix[j,i] = data_frame$value[data_frame_index] 
+        data_frame_index = data_frame_index + 1
+      } else {
+        new_matrix[j,i] = NA
+      } 
+    }
+  }
+  #convert matrix to data frame and name columns
+  names = append(c("Time"),sort(measurement_vector, decreasing = FALSE))
+  final_frame = as.data.frame(new_matrix)
+  colnames(final_frame) = names
+  return(remove_na_rows(final_frame))
+}
+
 #https://stackoverflow.com/questions/2547402/is-there-a-built-in-function-for-finding-the-mode
 #returns the mode of a vector. return list if there is more than one
 #called in impute frame
