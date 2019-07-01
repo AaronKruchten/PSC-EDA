@@ -291,7 +291,7 @@ query_by_flow <- function(flow_name,measurements,database,username,password){
   for(i in 2:(number_of_measurements +1)){
     for(j in 1:number_of_time_measuresments){
       #this assert will often fail if there are typos in the metrics inputted
-      assert(j <= length(time_values))
+      #assert(j <= length(time_values))
       if(data_frame_index <= length(data_frame$time) && data_frame$time[data_frame_index] == time_values[j]){
         new_matrix[j,i] = data_frame$value[data_frame_index] 
         data_frame_index = data_frame_index + 1
@@ -301,7 +301,7 @@ query_by_flow <- function(flow_name,measurements,database,username,password){
     }
   }
   #convert matrix to data frame and name columns
-  names = append(c("Time"),sort(measurement_vector, decreasing = FALSE))
+  names = append(c("time"),sort(measurement_vector, decreasing = FALSE))
   final_frame = as.data.frame(new_matrix)
   colnames(final_frame) = names
   return(remove_na_rows(final_frame))
