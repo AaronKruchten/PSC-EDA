@@ -1,0 +1,197 @@
+```{R}
+#trying to make sense of the cubic model and test it on real data. 
+measurements = "DataSegsIn,DataSegsOut,SegsRetrans,CongSignals,MaxCaCwnd,CurCwnd,SmoothedRTT"
+#CurCwnd = a(r - 3√((1-B)x/a))^3 + x
+
+
+test_frame <- form_dataframe("/Users/aaronkruchten/Desktop/bd4d85723b4f141d96cde95c6aed3941f25ec1624ff9ecfe46bf8d0d6156e436",measurements = measurements)
+
+
+#x is defined as the window size just before the last window reduction
+
+compute_diff <- function(frame,col_number){
+  col_names = colnames(frame)
+  difference = c(0,diff(as.numeric(as.character(frame[,col_number]))))
+  new_name = paste(col_names[col_number],"Diff",sep = "")
+  new_col_number = ncol(frame) + 1
+  new_names = c(col_names,new_name)
+  frame[,new_col_number] = difference
+  colnames(frame) = new_names
+  return(frame)
+}
+test_frame <- compute_diff(test_frame,7)
+test_frame <- compute_diff(test_frame,2)
+test_frame$averageAmountOfTimeBetweenPacketLoss <- test_frame$SegsRetransDiff/60
+test_frame$averageAmountOfTimeBetweenReductions <- test_frame$CongSignalsDiff/60
+
+
+lambda = mean(test_frame$averageAmountOfTime)
+
+test_frame_numeric <- test_frame
+test_frame_numeric$time = c()
+test_frame_numeric <- convert_to_numeric(test_frame)
+test_frame_numeric$time <- test_frame$time
+plot(as.numeric(test_frame_numeric$time),test_frame_numeric$CurCwnd)
+lines(test_frame_numeric$time,test_frame_numeric$CurCwnd)
+
+
+```
+
+
+```{R}
+#computed using the mathis model
+exp_distribution <- function(x){
+  #we expect to lose 561 packets in any given minute
+  lambda = 1/9.357
+  return(lambda*exp(-lambda*x))
+}
+
+
+#probability of packet loss for a given minute is supposed to be a poisson distribution
+#taking the mean of the amount of segments retrans at a given time (MLE for lambda in poisson) we get a lambda of 
+lambda = 1/9.357
+ppois(600,lambda = lambda)
+v <- c(1:700)
+output <- dpois(v,lambda = lambda)
+
+plot(v,output)
+
+
+v <- c(0:3000)
+output_mine <- exp_distribution(v)
+hist(test_frame$averageAmountOfTime,probability = TRUE)
+lines(v,output_mine,col = "blue")
+```
+
+
+```{R}
+#building the model as described in the following paper
+#http://www.ece.ubc.ca/~vincentw/C/BWLcGlobecom10.pdf
+
+#computes cuberoot as one would expect. R returns NaN if negative for some reason
+cuberoot <- function(x){
+  if(x >= 0){
+    return(x^(1/3))
+  } else {
+    return(-1*abs(x)^(1/3))
+  }
+}
+
+#w(x, τ) as described in the paper linked above
+window_size_function <- function(x,r,beta,alpha){
+  value = alpha*(cuberoot(r - (1-beta)*x/alpha)) + x
+  return(value)
+}
+
+#D(x,y) as described in the paper linked above
+time_duration_function <- function(x,y,beta,alpha){
+  first_part = cuberoot((y-x)/alpha)
+  second_part = cuberoot((1-beta)*x/alpha)
+  return(first_part + second_part)
+}
+
+#computes the matrix of probabilities and transposes.
+compute_P_matrix <- function(frame,beta,alpha){
+  W = frame$MaxCaCwnd[1] 
+  data_vector = rep(0,nrow(frame)*nrow(frame))
+  P_matrix = matrix(data_vector,nrow = nrow(frame),ncol = nrow(frame))
+  for(i in 1:nrow(frame)){
+    for(j in 1:nrow(frame)){
+      P_matrix[i,j] = compute_P(i,j,beta,alpha,frame)
+    }
+  }
+  return(P_matrix)
+}
+
+
+#computes the P_i_j as described in the paper
+compute_P <- function(i,j,beta,alpha,frame){
+  W = frame$MaxCaCwnd[1]
+  N = nrow(frame)
+  lambda = compute_lambda(frame)
+  if(j < beta*(i - 0.5)){
+    return(0)
+  } else {
+    a_i = (i - 0.5)*W/N
+    second_input_min = (j-1)*W/N
+    tau_i_j_min = max(time_duration_function(a_i,second_input_min,beta = beta,alpha = alpha),0)
+    second_input_max = j*W/N
+    tau_i_j_max = time_duration_function(a_i,second_input_max,beta = beta,alpha = alpha)
+    P_i_j = exp(-lambda *(tau_i_j_min)) - exp(-lambda * tau_i_j_max)
+    if(is.na(P_i_j)){
+      print("error")
+      time_duration_function(a_i,second_input_min,beta = beta,alpha = alpha)
+    }
+    return(P_i_j)
+  }
+}
+
+#random packet loss if assumed to have a poisson distribution with mean lambda
+#looking at the data this assumption does not appear to describe the model very well
+#however a second assumption was that the time between packet loss is exponential with rate lambda
+#this function estimates lambda from the data
+compute_lambda <- function(frame){
+  col_number_segs_retrans = 7
+  frame <- compute_diff(frame,col_number_segs_retrans)
+  one_minute = 60
+  frame$averageAmountOfTimeBetweenPacketLoss <- frame$SegsRetransDiff/one_minute
+  lambda = 1/mean(test_frame$averageAmountOfTimeBetweenPacketLoss)
+  return(lambda)
+}
+
+#estimates the integral equal to s_i_j using area under curve function as described in the paper
+compute_s <- function(i,j,frame){
+  W = frame$MaxCaCwnd
+  N = nrow(frame)
+  a_i = frame$CurCwnd[i]
+  second_input = (j-0.5) * W/N
+  tau_i_j = max(time_duration_function(a_i,second_input,beta = beta,alpha = alpha),0)
+  x_values = seq(1,tau_i_j,by =.1)
+  value = AUC(x_values,frame$CurCwnd)
+  return(value)
+}
+
+#adjusting the matrix so we can solve systems of equations for pi as decribed in the paper
+adjust_matrix <- function(matrix){
+  for(i in 1:nrow(matrix)){
+    matrix[i,i] = matrix[i,i] -1
+  }
+  number_of_rows = nrow(matrix)
+  last_row <- rep(1,nrow(matrix))
+  matrix = t(matrix)
+  #matrix = rbind(matrix,last_row)
+  return(matrix)
+}
+
+compute_average_throughput <- function(frame,beta,alpha){
+  W = frame$MaxCaCwnd[1]
+  P_matrix = compute_P_matrix(frame,beta,alpha)
+  P_matrix_adjusted = adjust_matrix(P_matrix)
+  b = rep(0,nrow(P_matrix))
+  pi_vector = solve(P_matrix_adjusted,b)
+  numerator_sum = 0
+  denominator_sum = 0
+  for(i in 1:nrow(P_matrix)){
+    curr_pi = pi_vector[i] 
+    for(j in 1:nrow(P_matrix)){
+      curr_s_i_j = compute_s(i,j,frame)
+      curr_tau_i_j = compute_s(i,j,frame)*1/frame$SmoothedRTT[i]
+      curr_p_i_j = P_matrix[i,j]
+      curr_numerator = curr_pi*curr_s_i_j*curr_p_i_j
+      curr_denominator = curr_pi*curr_tau_i_j*curr_p_i_j
+      numerator_sum = numerator_sum + curr_numerator
+      denominator_sum = denominator_sum + curr_denominator
+    }
+  }
+return(numerator_sum/denominator_sum * (1/W))
+}
+
+test_frame_numeric <- test_frame
+test_frame_numeric$time = c()
+test_frame_numeric <- convert_to_numeric(test_frame_numeric)
+test_frame_numeric$time = test_frame$time
+beta = 1/2
+alpha = 1
+compute_average_throughput(test_frame_numeric,beta = beta,alpha = alpha)
+  
+```

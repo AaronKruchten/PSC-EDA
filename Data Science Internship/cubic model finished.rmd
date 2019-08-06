@@ -1,0 +1,296 @@
+```{R}
+test_frame_two <- form_dataframe("/Users/aaronkruchten/Desktop/bd4d85723b4f141d96cde95c6aed3941f25ec1624ff9ecfe46bf8d0d6156e436",measurements = "CongSignals,CurCwnd")
+test_frame_two_numeric <- test_frame_two
+test_frame_two_numeric$time = c()
+test_frame_two_numeric <- convert_to_numeric(test_frame_two) 
+test_frame_two_numeric$time = test_frame$time
+test_frame_two_numeric <- compute_diff(test_frame_two_numeric,2)
+test_frame_two_numeric$CongSignalsDiff[1] = 7
+mapped_value = rep(0,419)
+index = 1
+for(i in 1:length(test_frame_two_numeric$CongSignalsDiff)){
+  sub_len = test_frame_two_numeric$CongSignalsDiff[i]
+    if(sub_len > 0){
+      for(j in 1:sub_len){
+          mapped_value[index] = test_frame_two_numeric$CurCwnd[i]
+          index = index + 1
+        }
+    }
+}
+
+
+library(DescTools)
+#building the model as described in the following paper
+#http://www.ece.ubc.ca/~vincentw/C/BWLcGlobecom10.pdf
+
+#computes cuberoot as one would expect. R returns NaN if negative for some reason
+cuberoot <- function(x){
+  if(x >= 0){
+    return(x^(1/3))
+  } else {
+    return(-1*abs(x)^(1/3))
+  }
+}
+
+#w(x, τ) as described in the paper linked above
+window_size_function <- function(x,r,beta,alpha){
+  value = alpha*(cuberoot(r - (1-beta)*x/alpha)) + x
+  return(value)
+}
+
+#D(x,y) as described in the paper linked above
+time_duration_function <- function(x,y,beta,alpha){
+  first_part = cuberoot((y-x)/alpha)
+  second_part = cuberoot((1-beta)*x/alpha)
+  return(first_part + second_part)
+}
+
+#computes the matrix of probabilities and transposes.
+compute_P_matrix <- function(frame,beta,alpha){
+  number_of_partitions = 67
+  W = frame$MaxCaCwnd[1]
+  vector_length = number_of_partitions
+  data_vector = rep(0,vector_length*vector_length)
+  P_matrix = matrix(data_vector,nrow = vector_length,ncol = vector_length)
+  for(i in 1:vector_length){
+    for(j in 1:(vector_length -1) ){
+      P_matrix[i,j] = compute_P(i,j,beta,alpha,frame)
+    }
+  }
+  return(P_matrix)
+}
+
+
+#computes the P_i_j as described in the paper
+compute_P <- function(i,j,beta,alpha,frame){
+  W = (frame$MaxCaCwnd[1])
+  N = 67
+  lambda = compute_lambda(frame)
+  if(j < beta*(i - 0.5)){
+    return(0)
+  } else {
+    a_i = (i - 0.5)*W/N
+    second_input_min = (j-1)*W/N
+    tau_i_j_min = max(time_duration_function(a_i,second_input_min,beta = beta,alpha = alpha),0)
+    second_input_max = j*W/N
+    tau_i_j_max = time_duration_function(a_i,second_input_max,beta = beta,alpha = alpha)
+    P_i_j = exp(-lambda *(tau_i_j_min)) - exp(-lambda * tau_i_j_max)
+    return(P_i_j)
+  }
+}
+
+#random packet loss if assumed to have a poisson distribution with mean lambda
+#looking at the data this assumption does not appear to describe the model very well
+#however a second assumption was that the time between packet loss is exponential with rate lambda
+#this function estimates lambda from the data
+compute_lambda <- function(frame){
+  col_number_segs_retrans = 7
+  frame <- compute_diff(frame,col_number_segs_retrans)
+  one_minute = 60
+  frame$averageAmountOfTimeBetweenPacketLoss <- frame$SegsRetransDiff
+  lambda = 1/(mean(frame$averageAmountOfTimeBetweenPacketLoss))
+  return(lambda)
+}
+
+#estimates the integral equal to s_i_j using area under curve function as described in the paper
+#might want to mess with this function if we don't get reasonable values
+#should we step by less than 1 and interpolate?
+#should we use frame$CurCwnd or the window function? currently window function is unused
+#should I round or truncate?
+
+# compute_s <- function(i,j,frame){
+#   W = (frame$MaxCaCwnd[1]*8)/60
+#   N = nrow(frame)
+#   a_i = (i - 0.5)*W/N
+#   second_input = (j-0.5) * W/N
+#   tau_i_j = max(time_duration_function(a_i,second_input,beta = beta,alpha = alpha),1)
+#   tau_i_j_rounded = trunc(tau_i_j)
+#   x_values = seq(1,tau_i_j_rounded,by = 1)
+#   value = 0
+#   if(length(x_values) > 1){
+#     if(max(x_values) > nrow(frame)){
+#       new_index = 1
+#       curr_value = x_values[1]
+#       new_x_values = c()
+#       while(curr_value <= nrow(frame) && new_index <= length(x_values)){
+#         new_x_values[new_index] = curr_value
+#         new_index = new_index + 1
+#         curr_value = x_values[new_index]
+#       }
+#       x_values = new_x_values
+#     }
+#     value = AUC(x_values,frame$CurCwnd[x_values])*60
+#   }
+#   return(value)
+# }
+
+compute_s <- function(i,j,frame,beta,alpha){
+  W = (frame$MaxCaCwnd[1])
+  N = tail(frame$CongSignals,n=1)
+  a_i = (i - 0.5)*W/N
+  second_input = (j-0.5) * W/N
+  tau_i_j = max(time_duration_function(a_i,second_input,beta = beta,alpha = alpha),1)
+  tau_i_j_rounded = trunc(tau_i_j)
+  L = cuberoot((1-beta)*a_i/alpha)
+  first_addend = a_i*tau_i_j_rounded
+  second_addend = (alpha/4) * ((tau_i_j_rounded - L)^4  - L^4)
+  return(first_addend + second_addend)
+}
+
+#adjusting the matrix so we can solve systems of equations for pi as decribed in the paper
+adjust_matrix <- function(matrix){
+  for(i in 1:nrow(matrix)){
+     matrix[i,i] = matrix[i,i] -1
+   }
+  number_of_rows = nrow(matrix)
+  last_row <- rep(1,nrow(matrix))
+  matrix = t(matrix)
+  matrix = rbind(matrix,last_row)
+  return(matrix)
+}
+
+compute_average_throughput <- function(frame,beta,alpha){
+  W = (frame$MaxCaCwnd[1])
+  N = 67
+  smoothed_rtt = mean(na.omit(frame$SmoothedRTT))
+  P_matrix = compute_P_matrix(frame,beta,alpha)
+  View(P_matrix)
+  P_matrix_adjusted = adjust_matrix(P_matrix)
+  b = c(rep(0,nrow(P_matrix)),1)
+  pi_vector = qr.solve(P_matrix_adjusted,b)
+  View(pi_vector)
+  numerator_sum = 0
+  denominator_sum = 0
+  curr_numerator_vector = c()
+  curr_denominator_vector = c()
+  index = 1
+  for(i in 1:nrow(P_matrix)){
+    curr_pi = pi_vector[i] 
+    smaller_numerator_sum = 0
+    smaller_denominator_sum  = 0
+    for(j in 1:nrow(P_matrix)){
+      curr_s_i_j = compute_s(i,j,frame,beta = beta,alpha = alpha)
+      a_i = (i - 0.5)*W/N
+      second_input = (j-0.5) * W/N
+      curr_tau_i_j = max(time_duration_function(a_i,second_input,beta = beta,alpha = alpha),0)
+      curr_p_i_j = P_matrix[i,j]
+      curr_numerator = curr_pi*curr_s_i_j*curr_p_i_j
+      curr_denominator = curr_pi*curr_tau_i_j*curr_p_i_j
+      # if(curr_denominator == 0){
+      #   print("pi")
+      #   print(curr_pi)
+      #   print("tau")
+      #   print(curr_tau_i_j)
+      #   print("p")
+      #   print(curr_p_i_j)
+      # }
+      smaller_numerator_sum = smaller_numerator_sum + curr_numerator
+      smaller_denominator_sum= smaller_denominator_sum + curr_denominator
+    }
+    numerator_sum = numerator_sum + smaller_numerator_sum
+    denominator_sum = denominator_sum + smaller_denominator_sum
+    curr_numerator_vector[index] = smaller_numerator_sum
+    curr_denominator_vector[index] = smaller_denominator_sum
+    index = index + 1
+  }
+  print("num sum")
+  print(numerator_sum)
+  print("den sum")
+  print(denominator_sum)
+  return(numerator_sum/denominator_sum * (1/W))
+}
+
+measurements = "DataSegsIn,DataSegsOut,SegsRetrans,CongSignals,MaxCaCwnd,CurCwnd,SmoothedRTT,HCDataOctetsOut,HCDataOctetsIn,OctetsRetrans,CurMSS"
+#CurCwnd = a(r - 3√((1-B)x/a))^3 + x
+
+test_frame <- form_dataframe("/Users/aaronkruchten/Desktop/bd4d85723b4f141d96cde95c6aed3941f25ec1624ff9ecfe46bf8d0d6156e436",measurements = measurements)
+
+
+compute_diff <- function(frame,col_number){
+  col_names = colnames(frame)
+  difference = c(0,diff(as.numeric(as.character(frame[,col_number]))))
+  new_name = paste(col_names[col_number],"Diff",sep = "")
+  new_col_number = ncol(frame) + 1
+  new_names = c(col_names,new_name)
+  frame[,new_col_number] = difference
+  colnames(frame) = new_names
+  return(frame)
+}
+
+#we need to compute C
+#W = MaxCACwnd = C * mean(smoothedRTT)
+#mean(smoothedRTT) = 64
+# mean_smoothedRTT = mean(test_frame_numeric$SmoothedRTT)
+# C = test_frame_numeric$MaxCaCwnd[1]/mean_smoothedRTT
+# C = (C*8)/60
+#C is no in bits/sec
+
+test_frame <- compute_diff(test_frame,11)
+test_frame <- compute_diff(test_frame,2)
+test_frame <- compute_diff(test_frame,10)
+test_frame$averageAmountOfTimeBetweenPacketLoss <- test_frame$SegsRetransDiff/60
+test_frame$averageAmountOfTimeBetweenReductions <- test_frame$CongSignalsDiff/60
+
+test_frame_numeric <- test_frame
+test_frame_numeric$time = c()
+test_frame_numeric <- convert_to_numeric(test_frame_numeric)
+test_frame_numeric$time = test_frame$time
+test_frame_numeric$PacketLossEstimate = test_frame_numeric$OctetsRetransDiff/test_frame_numeric$CurMSS
+test_frame_numeric_two <- compute_diff(test_frame,8)
+test_frame_numeric_two$zzzbandwidth <- (test_frame_numeric_two$HCDataOctetsOutDiff*8)/60  
+mean(test_frame_numeric_two$zzzbandwidth)
+beta = 1/2
+alpha = 1
+avg_throughput <- compute_average_throughput(test_frame_numeric,beta = beta,alpha = alpha) * 952
+```
+
+
+```{R}
+hist(test_frame_numeric$SegsRetransDiff,freq = FALSE,breaks = 100, main = "Estimate of Packets Lost Per Minute",xlab = "Packets Lost")
+legend(2000,.01,legend = c("Poisson Mass function"),col = c("blue"),lty =c(1,1),cex = .6)
+one_minute = 60
+lambda_mle = mean(test_frame_numeric$SegsRetransDiff)
+input <- c(1:3000)
+density <- dpois(input,lambda = lambda_mle)
+lines(input,density,col = "blue")
+
+
+```
+
+
+
+```{R}
+hist(test_frame_numeric$averageAmountOfTimeBetweenPacketLoss,freq = FALSE,breaks = 100,main = "Average amount of time between packet loss",xlab = "Seconds")
+legend(30,.5,legend = c("Exponential Density Function"),col = c("red"),lty =c(1,1),cex = .6)
+lambda_exp = nrow(test_frame_numeric)/sum(test_frame_numeric$averageAmountOfTimeBetweenPacketLoss)
+values = c(0:50)
+density <- dexp(values,rate = lambda_exp)
+lines(values,density,col = "red")
+
+
+```
+
+
+```{R}
+test_frame_two <- form_dataframe("/Users/aaronkruchten/Desktop/bd4d85723b4f141d96cde95c6aed3941f25ec1624ff9ecfe46bf8d0d6156e436",measurements = "CongSignals,CurCwnd")
+test_frame_two_numeric <- test_frame_two
+test_frame_two_numeric$time = c()
+test_frame_two_numeric <- convert_to_numeric(test_frame_two) 
+test_frame_two_numeric$time = test_frame$time
+test_frame_two_numeric <- compute_diff(test_frame_two_numeric,2)
+test_frame_two_numeric$CongSignalsDiff[1] = 7
+mapped_value = rep(0,419)
+index = 1
+for(i in 1:length(test_frame_two_numeric$CongSignalsDiff)){
+  sub_len = test_frame_two_numeric$CongSignalsDiff[i]
+    if(sub_len > 0){
+      for(j in 1:sub_len){
+          print(sub_len)
+          mapped_value[index] = test_frame_two_numeric$CurCwnd[i]
+          index = index + 1
+        }
+    }
+}
+
+
+```

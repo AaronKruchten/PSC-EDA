@@ -1,0 +1,71 @@
+```{R}
+measurements = "DataSegsIn,DataSegsOut,SegsRetrans,CongSignals,MaxCaCwnd,CurCwnd,SmoothedRTT,HCDataOctetsOut,HCDataOctetsIn,OctetsRetrans,CurMSS"
+#CurCwnd = a(r - 3√((1-B)x/a))^3 + x
+
+test_frame <- form_dataframe("/Users/aaronkruchten/Desktop/bd4d85723b4f141d96cde95c6aed3941f25ec1624ff9ecfe46bf8d0d6156e436",measurements = measurements)
+
+
+test_frame <- compute_diff(test_frame,11)
+test_frame <- compute_diff(test_frame,2)
+test_frame <- compute_diff(test_frame,10)
+test_frame$averageAmountOfTimeBetweenPacketLoss <- test_frame$SegsRetransDiff/60
+test_frame$averageAmountOfTimeBetweenReductions <- test_frame$CongSignalsDiff/60
+
+test_frame_numeric <- test_frame
+test_frame_numeric$time = c()
+test_frame_numeric <- convert_to_numeric(test_frame_numeric)
+test_frame_numeric$time = test_frame$time
+test_frame_numeric$PacketLossEstimate = test_frame_numeric$OctetsRetransDiff/test_frame_numeric$CurMSS
+beta = 1/2
+alpha = 1
+
+```
+
+
+```{R}
+hist(test_frame_numeric$SegsRetransDiff,freq = FALSE,breaks = 100)
+legend(2000,.01,legend = c("Poisson Density","Exponential Density"),col = c("blue","red"),lty =c(1,1),cex = .6)
+one_minute = 60
+lambda_mle = mean(test_frame_numeric$SegsRetransDiff)/one_minute
+input <- c(1:3000)
+density <- dpois(input,lambda = lambda_mle)
+lines(input,density,col = "blue")
+
+sum(dpois(c(250:3000),lambda= lambda_mle))
+```
+
+
+
+```{R}
+hist(test_frame_numeric$averageAmountOfTimeBetweenPacketLoss,freq = FALSE,breaks = 100)
+lambda_exp = nrow(test_frame_numeric)/sum(test_frame_numeric$averageAmountOfTimeBetweenPacketLoss)
+legend(2000,.01,legend = c("Poisson Density","Exponential Density"),col = c("blue","red"),lty =c(1,1),cex = .6)
+values = c(0:50)
+density <- dexp(values,rate = lambda_exp)
+lines(values,density,col = "red")
+```
+
+
+```{R}
+test_frame_two <- form_dataframe("/Users/aaronkruchten/Desktop/bd4d85723b4f141d96cde95c6aed3941f25ec1624ff9ecfe46bf8d0d6156e436",measurements = "CongSignals,CurCwnd")
+test_frame_two_numeric <- test_frame_two
+test_frame_two_numeric$time = c()
+test_frame_two_numeric <- convert_to_numeric(test_frame_two) 
+test_frame_two_numeric$time = test_frame$time
+test_frame_two_numeric <- compute_diff(test_frame_two_numeric,2)
+test_frame_two_numeric$CongSignalsDiff[1] = 7
+mapped_value = rep(0,419)
+index = 1
+for(i in 1:length(test_frame_two_numeric$CongSignalsDiff)){
+  sub_len = test_frame_two_numeric$CongSignalsDiff[i]
+    if(sub_len > 0){
+      for(j in 1:sub_len){
+          print(sub_len)
+          mapped_value[index] = test_frame_two_numeric$CurCwnd[i]
+          index = index + 1
+        }
+    }
+}
+
+
+```

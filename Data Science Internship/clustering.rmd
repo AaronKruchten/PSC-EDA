@@ -1,0 +1,64 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{R, cache = TRUE}
+source("/Users/aaronkruchten/Desktop/Data Science Internship/PSC interface github copy.R")
+
+
+library(influxdbr)
+flow_name = "7f675aa41df8e8a200496e584f6608383a502e8485257acf94141f84bc88ce36"
+measures = "HCDataOctetsOut,OctetsRetrans,HCDataOctetsIn,ElapsedSecs,CurMSS,PipeSize,MaxPipeSize,CurRTO,Congsignals,CurCwnd,CurSsthresh,Timeouts,CurRwinSent,MaxRwinSent,ZeroRwinSent,CurRwinRcvd,MaxRwinRcvd,ZeroRwinRcvd"
+database = "ALL_PSC_br034.dmz.bridges.psc.edu"
+save_location = paste("/Users/aaronkruchten/Desktop/flows/",flow_name,sep="")
+
+
+
+if(!file.exists(save_location)){
+  dir.create(save_location)
+  query_all_single_flow(flow_name,database,save_location = save_location,username = "reader",password = "listen")
+}
+
+
+five_seven_frame <- form_dataframe(save_location,measures)
+View(five_seven_frame)
+imputed_five_seven_frame <- impute_frame(five_seven_frame,10)
+
+
+imputed_five_seven_frame_no_time <- imputed_five_seven_frame
+imputed_five_seven_frame_no_time$time = c()
+
+number_of_clusters = 2
+cluster_kmeans <-kmeans(imputed_five_seven_frame_no_time,number_of_clusters)
+
+d = dist(imputed_five_seven_frame_no_time, method = "euclidean")
+hier_clust <- hclust(d,method = "single")
+plot(hier_clust)
+cut_tree_2 <- cutree(hier_clust,k = 2)
+
+
+
+
+
+```
+
+
+```{R}
+par(mfrow = c(2,4))
+plot_pairwise_measurements <- function(df,clustering){
+  for(i in 1:ncol(df)){
+    for(j in i:ncol(df)){
+      col_names = names(df)
+      plot(df[,i],df[,j],col = clustering,xlab = col_names[i],ylab = col_names[j])
+    }
+  }
+  for(k in 1:ncol(df)){
+    plot(imputed_five_seven_frame$time,df[,k],xlab = "time",ylab = col_names[k], col = clustering)
+    plot(c(1:nrow(imputed_five_seven_frame)),df[,k],xlab = "index",ylab = col_names[k],col = clustering)
+  }
+}
+
+plot_pairwise_measurements(imputed_five_seven_frame_no_time,cut_tree_2)
+```

@@ -1,0 +1,6 @@
+```{R}
+
+plot(g)
+plot(output)
+
+```

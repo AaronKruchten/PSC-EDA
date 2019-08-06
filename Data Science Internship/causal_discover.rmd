@@ -1,0 +1,42 @@
+---
+output: word_document
+---
+```{R}
+
+most_data_flow = "'8aaf8c90f6f6f9e9e5220d9c0725cf386b8c79374ac259a95900ad970c8547a1'"
+measurements_for_causal_inference = "AbruptTimeouts,CongAvoid,CongOverCount,CurAppRQueue,CurAppWQueue,CurCwnd,CurRTO,CurRwinRcvd,CurRwinSent,CurSsthresh,CongSignals,DataOctetsIn,DataOctetsOut,DataSegsIn,DataSegsOut,DupAcksIn,DupAcksOut,FastRetran,InRecovery,OctetsRetrans,PipeSize,SoftErrors,SubsequentTimeouts,Timeouts,ThruOctetsAcked,ThruOctetsReceived"
+database = "ALL_PSC_br034.dmz.bridges.psc.edu"
+most_data_frame <- query_by_flow(most_data_flow,measurements_for_causal_inference,database)
+
+most_common_flow = "'3a63adbbf20bc4e31124b17246d2758b18afdbf92f5091261eac359049128733'"
+
+most_common_data_frame <- query_by_flow(most_common_flow,measurements_for_causal_inference,database)
+
+```
+
+```{R}
+library(rcausal)
+library(DOT)
+library(rcausal)
+
+
+transformed_most_data_frame = transform_frame_tetradrunner(most_data_frame,10) 
+
+tetradrunner_most_data_frame <- tetradrunner(algoId = 'fges',df = transformed_most_data_frame,scoreId = 'fisher-z',
+dataType = 'continuous',alpha=0.01,faithfulnessAssumed=TRUE,maxDegree=-1,verbose = FALSE)
+
+
+transformed_most_common_frame = transform_frame_tetradrunner(most_common_data_frame,10)
+
+tetradrunner_most_common_frame <-tetradrunner(algoId = 'fges',df = transformed_most_common_frame,scoreId = 'fisher-z',
+dataType = 'continuous',alpha=0.01,faithfulnessAssumed=TRUE,maxDegree=-1,verbose= FALSE)
+
+
+setwd("/Users/aaronkruchten/Desktop/causal plot")
+
+graph_dot_most_data <- tetradrunner.tetradGraphToDot(tetradrunner_most_data_frame$graph)
+dot(graph_dot_most_data)
+
+graph_dot_most_common <- tetradrunner.tetradGraphToDot(tetradrunner_most_common_frame$graph)
+dot(graph_dot_most_common)
+```

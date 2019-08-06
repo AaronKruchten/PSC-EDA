@@ -1,0 +1,33 @@
+#The current value of the retransmit timer RTO.
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+```{r,echo = FALSE}
+library(readxl)
+CurRTT <- read_excel("~/Desktop/EXCEL FILES/CurRTT.xlsx")
+#find the flows in our data set that have the most common points
+flow_table <- sort(table(CurRTT$Flow), decreasing = TRUE)[1:30]
+
+```
+
+
+```{r, echo = FALSE}
+
+#plow currRTT of flows that occurr most often in our data set
+plot_currRT0 <-function(x){
+  new_frame <- subset.data.frame(CurRTT,CurRTT$Flow == x)
+  plot(new_frame$Time,new_frame$CurrentRTT,xlab = "Time", ylab = "Current RTO")
+}
+
+
+for(i in 1:length(names(flow_table))){
+  print(names(flow_table)[i])
+  plot_currRT0(names(flow_table)[i])
+}
+
+
+print(length(names(flow_table)))
+
+```

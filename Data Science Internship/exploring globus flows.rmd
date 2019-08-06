@@ -1,0 +1,82 @@
+
+
+```{R}
+source("/Users/aaronkruchten/Desktop/Data Science Internship/R_query_clean.R")
+#exploring flow with most data octets out in our sample. 
+
+most_data_flow = "'8aaf8c90f6f6f9e9e5220d9c0725cf386b8c79374ac259a95900ad970c8547a1'"
+
+
+m = "AbruptTimeouts,CERcvd,CongAvoid,CongOverCount,CongSignals,CurAppRQueue,CurAppWQueue,CurCwnd,CurMSS,CurRTO,CurRwinRcvd,CurRwinSent,CurSsthresh,CurTimeoutCount,DataOctetsOut,DataOctetsIn,DataSegsIn,DataSegsOut,DSACKDups,DupAckEpisodes,DupAcksIn,DupAcksOut,ECESent,ECN,ECNsignals,EarlyRetrans,EarlyRetransDelay,FastRetran,HCDataOctetsIn,HCDataOctetsOut,HCThruOctetsAcked,HCThruOctetsReceived,InRecovery,IpTosIn,IpTosOut,MaxAppWQueue,MaxAppRQueue,Nagle,NonRecovDA,OctetsRetrans,OtherReductions,PipeSize,SampleRTT,SegsIn,SegsOut,SegsRetrans,SlowStart,SoftErrors,SpuriousFrDetected,ThruOctetsAcked,ThruOctetsReceived"
+
+
+most_data_frame = query_by_flow(most_data_flow,m,"ALL_PSC_br034.dmz.bridges.psc.edu")
+View(most_data_frame)
+
+numeric_data_frame = most_data_frame
+numeric_data_frame = as.numeric(numeric_data_frame)
+principal_component_output <- princomp(data.matrix(numeric_data_frame))
+#View(principal_component_output)
+
+variance = principal_component_output$sdev^2
+cumulative_sum = cumsum(variance)
+total_sum = sum(variance)
+variance_explained = cumulative_sum/total_sum
+plot(1:length(variance_explained),variance_explained)
+
+
+new_variable_one = principal_component_output$scores[,1]
+new_variable_two = principal_component_output$scores[,2]
+plot(new_variable_one,new_variable_two)
+
+
+sum(is.na(most_data_frame))
+
+
+
+
+
+
+
+measurements_for_causal_inference = "CurRTO,CurSsthresh,CongSignals,DataOctetsIn,DataOctetsOut,DataSegsIn,DataSegsOutInRecovery,OctetsRetrans,PipeSize,SoftErrors,Timeouts"
+
+
+causal_measurements = query_by_flow(most_data_flow,measurements_for_causal_inference,"ALL_PSC_br034.dmz.bridges.psc.edu")
+for(i in 1:ncol(causal_measurements)){
+  causal_measurements[,i] = as.numeric(causal_measurements[,i])
+}
+causal_measurements = transform_frame(causal_measurements,10)
+plot_frame(causal_measurements)
+library(pcalg)
+
+#causal model with gaussian independence assumption which is clearly incorrect. 
+suffStat <- list(C = cor(causal_measurements), n = nrow(causal_measurements))
+causal_model = pc(suffStat,indepTest = gaussCItest,alpha = 0.001,labels = colnames(causal_measurements))
+plot(causal_model, main = "Causal Model")
+ 
+adjacency_matrix = as(causal_model,"amat")
+
+
+matrix_type_adjacency = convert_adjaceny_to_matrix(adjacency_matrix)
+
+
+g1 <- as(t(matrix_type_adjacency),"graphNEL")
+plot(g1)
+
+
+
+suffstat_two <- list(g = g1,jp = johnson.all.pairs.sp(g1))
+causal_model_two <- pc(suffStat = suffstat_two,indepTest = dsepTest, alpha = 0.001, labels = colnames(causal_measurements))
+plot(causal_model_two)
+
+```
+
+```{R}
+plot(causal_model, main = "Causal Model")
+```
+
+
+```{R}
+most_interesting_flows
+vector = 
+```

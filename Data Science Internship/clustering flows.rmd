@@ -1,0 +1,286 @@
+```{R}
+library(influxdbr)
+
+
+gsisshd_flows <- list.files("/Users/aaronkruchten/Desktop/gsisshd flow")
+sshd_flows <- list.files("/Users/aaronkruchten/Desktop/sshd flow")
+globus_flows <- list.files("/Users/aaronkruchten/Desktop/globus flows")
+all_flows <- c(gsisshd_flows,sshd_flows,globus_flows)
+data_frame_lst = list()
+measures = "HCDataOctetsOut,OctetsRetrans"
+for(i in 1:length(all_flows)){
+  if(i <= length(gsisshd_flows)){
+    gsisshd_directory = "/Users/aaronkruchten/Desktop/gsisshd flow/"
+    curr_directory = paste(gsisshd_directory,all_flows[i],sep = "")
+  }
+  else if(i > length(gsisshd_flows) && i <= length(sshd_flows) + length(gsisshd_flows)){
+    sshd_directory = "/Users/aaronkruchten/Desktop/sshd flow/"
+    curr_directory = paste(sshd_directory,all_flows[i],sep = "")
+  }
+  else{
+    globus_directory = "/Users/aaronkruchten/Desktop/globus flows/"
+    curr_directory = paste(globus_directory,all_flows[i],sep = "")
+  }
+  print(curr_directory)
+  curr_frame =  form_dataframe(curr_directory,measurements = measures)
+  data_frame_lst[[i]] = curr_frame
+}
+names(data_frame_lst) = all_flows
+
+
+data_octets_out_sum = c()
+octets_retrans_vector = c()
+for(i in 1:length(data_frame_lst)){
+  data_octets_out_sum[i] = sum(as.numeric(na.omit(data_frame_lst[[i]]$HCDataOctetsOut)))
+  octets_retrans_vector[i] = sum(as.numeric(na.omit(data_frame_lst[[i]]$OctetsRetrans)))
+}
+
+number_of_clusters = 4
+
+cluster_frame <- data.frame(Octets_out_Sum = data_octets_out_sum,Octets_retrans = octets_retrans_vector)
+
+cluster_kmeans <-kmeans(cluster_frame,number_of_clusters)
+
+d = dist(cluster_frame,method = "euclidean")
+clust <- hclust(d,method = "single")
+
+cut_tree <- cutree(clust,k = number_of_clusters)
+
+plot(cluster_frame$Octets_out_Sum,cluster_frame$Octets_retrans,col = cluster_kmeans$cluster)
+
+
+
+```
+
+
+```{R}
+#an attempt at spectral clustering cant get it to work very well.
+#spectral clustering. I don't like the way k-means and heirarchcial are working
+library(igraph)
+number_of_clusters = 2
+distance_matrix = as.matrix(d)
+zero_vector <- rep(0,n = 732*732)
+adjacency_matrix = matrix(zero_vector,nrow = 732,ncol = 732)
+distance_matrix_mean = mean(distance_matrix)
+for(i in 1:nrow(distance_matrix)){
+  for(j in 1:ncol(distance_matrix)){
+    if(distance_matrix[i,j] < distance_matrix_mean & distance_matrix[i,j] > 0){
+      adjacency_matrix[i,j] = 1
+    }
+  }
+}
+
+myGraph <- graph.adjacency(adjacency_matrix,weighted = NULL)
+
+degree_vector <- degree(myGraph)
+degree_matrix = matrix(zero_vector,nrow = 732,ncol = 732)
+for(i in 1:732){
+  degree_matrix[i,i] = degree_vector[i]
+}
+
+L= degree_matrix - adjacency_matrix
+eigen_vectors <- eigen(L)
+
+clusters <- kmeans(eigen_vectors$vectors[,1:number_of_clusters],number_of_clusters)
+
+plot(cluster_frame$Octets_out_Sum,cluster_frame$Octets_retrans,col = clusters$cluster)
+
+plot(eigen_vectors$vectors[,1],eigen_vectors$vectors[,2])
+
+```
+
+```{R}
+#gonna try and find flows with similar times. 
+library(influxdbr)
+february_flows <- read.csv("/Users/aaronkruchten/Desktop/february flows/flows from february 26 on.csv")
+
+database = "ALL_PSC_br034.dmz.bridges.psc.edu"
+
+#100 flows on february 27th
+flow_lst <- names(sort(table(february_flows$CongSignals.flow),decreasing = TRUE))[1:250]
+
+most_data_flows <- read.csv("/Users/aaronkruchten/Desktop/Data Science Internship/100000 random sample.csv")
+random <- runif(200,min = 1,max = 1000)
+flow_lst = as.character(most_data_flows$AbruptTimeouts.sample[random])
+directory = "/Users/aaronkruchten/Desktop/Random sample flows/"
+username = "reader"
+password = "listen"
+measurements = "HCDataOctetsOut,OctetsRetrans,DataSegsOut,DataSegsIn,SmoothedRTT,CurMSS,HCDataOctetsIn,command,dest_ip,dest_port,src_ip,src_port"
+for(i in 1:length(flow_lst)){
+  flow_name = flow_lst[i]
+  save_location = paste(directory,flow_name,sep ="")
+  if(!file.exists(save_location)){
+    dir.create(save_location)
+    query_all_single_flow_arbitrary_measures(flow_name,database = database,save_location = save_location,username = username,password = password,measurements = measurements)
+  }
+}
+
+files <- list.files("/Users/aaronkruchten/Desktop/clustering flows")
+first_file = read.csv("/Users/aaronkruchten/Desktop/clustering flows/cfa379ff79eec828134411cdeaf775d0ae6f0ebbe0078e0d734ce0126d278d88/'cfa379ff79eec828134411cdeaf775d0ae6f0ebbe0078e0d734ce0126d278d88'_HCDataOctetsOut.csv")
+min_time = min(as.POSIXct(first_file$time))
+max_time = max(as.POSIXct(first_file$time))
+for(i in 1:length(files)){
+  directory_location = paste(directory,files[i],sep="")
+  print(directory_location)
+  curr_frame = form_dataframe(directory_location,measurements)
+  print(min(as.numeric(curr_frame$time)))
+  curr_min = min(as.POSIXct(curr_frame$time))
+  curr_max = max(as.POSIXct(curr_frame$time))
+  print(curr_min)
+  if(curr_min < min_time){
+    min_time = curr_min
+  }
+  if(curr_max > max_time){
+    max_time = curr_max
+  }
+}
+
+time_values = as.POSIXct(format(seq(min_time,max_time,by = "min"),'%Y-%m-%d %H:%M'))
+new_matrix = matrix(nrow = length(time_values),ncol = length(files) + 1)
+new_matrix[,1] = time_values
+for(i in 1:length(files)){
+  directory_location = paste(directory,files[i],sep="")
+  curr_frame = form_dataframe(directory_location,measurements)
+  clean_octets_out = as.numeric(as.character(curr_frame$HCDataOctetsOut)) - as.numeric(as.character(curr_frame$OctetsRetrans))
+  curr_frame_time <- as.POSIXct(curr_frame$time)
+  curr_frame_time_index = 1
+  for(j in 1:length(time_values)){
+    if(curr_frame_time[curr_frame_time_index] == time_values[j]){
+      new_matrix[j,i+1] = clean_octets_out[curr_frame_time_index]
+      if(curr_frame_time_index < length(curr_frame_time)){
+        curr_frame_time_index = curr_frame_time_index + 1
+      }
+    } else {
+      new_matrix[j,i+1] = NA
+    }
+  }
+  curr_frame_time_index = 1
+}
+
+
+clean_octets_out_frame <- as.data.frame(new_matrix)
+
+new_names = c()
+for(i in 1:length(files)){
+  new_names[i] = files[i]
+}
+
+names(clean_octets_out_frame) <- c("time",new_names)
+clean_octets_out_frame$time <- time_values
+
+#saved in february flows
+write.csv(clean_octets_out_frame,"/Users/aaronkruchten/Desktop/february flows/clean octets out.csv")
+
+View(odff5_frame)
+
+```
+
+
+```{R}
+na_number = c()
+na_number[1] = 100000000000000
+col_means = c()
+col_means[1] = -1
+max_col_vector = c()
+max_col_vector[1] = -1
+for(i in 2:ncol(clean_octets_out_frame)){
+  na_number[i] = sum(is.na(clean_octets_out_frame[,i]))
+  col_means[i] = mean(na.omit(clean_octets_out_frame[,i]))
+  max_col_vector[i] = max(na.omit(clean_octets_out_frame[,i]))
+}
+
+no_time = clean_octets_out_frame
+no_time$time = c()
+
+plot(clean_octets_out_frame$time,clean_octets_out_frame[,34],xlab = "February 26-28", ylab = "Clean Octets Out")
+for(i in 2:ncol(clean_octets_out_frame)){
+  points(clean_octets_out_frame$time,clean_octets_out_frame[,i])
+}
+
+
+no_na_rows <- remove_na_rows(no_time)
+
+#kmeans and hclust do not handle NA's well we're gonna replace and NA with a negative one and add an additonal cluster. 
+for(i in 1:nrow(no_na_rows)){
+  for(j in 1:ncol(no_na_rows)){
+    if(is.na(no_na_rows[i,j])){
+      no_na_rows[i,j] = -1
+    }
+  }
+}
+
+number_of_clusters = 2
+transposed <- t(no_na_rows)
+cluster <- kmeans(transposed,number_of_clusters)
+
+#d = dist(transposed,method = "euclidean")
+#tree <- hclust(d,method = "average")
+#cluster <- cutree(tree,number_of_clusters)
+
+
+d = diss(no_na_rows,"ACF")
+tree <- hclust(d,method = "average")
+cluster <- cutree(tree,number_of_clusters)
+
+
+better_frame <- data.frame(flows = rownames(transposed),cluster = cluster)
+
+second_cluster <- subset.data.frame(better_frame,better_frame$cluster == 2)
+first_cluster <- subset.data.frame(better_frame,better_frame$cluster == 1)
+
+command_frame <- read.csv("/Users/aaronkruchten/Desktop/february flows/february flows commands.csv")
+
+flows <- command_frame$command.flow
+which(grepl("c1b204",as.character(flows)))
+#1feb16 globus-gridftp
+
+
+
+
+#of the four flows it separated into a different group by number of clean octets out 3 of the four were globus-gridftp- . The third was unknown. 
+second_cluster_flows <- second_cluster$flows
+command_vector_second_cluster <- c()
+for(i in 1:length(second_cluster_flows)){
+  cluster_flow <- as.character(second_cluster_flows[i])
+  print(cluster_flow)
+  if(cluster_flow %in% as.character(command_frame$command.flow)){
+    index = which(cluster_flow == as.character(command_frame$command.flow))
+    command_vector_second_cluster[i] = as.character(command_frame$command.value[index])
+  }
+}
+
+first_cluster_flows <- first_cluster$flows
+command_vector_first_cluster <- c()
+for(i in 1:length(first_cluster_flows)){
+  cluster_flow <- as.character(first_cluster_flows[i])
+  print(cluster_flow)
+  if(cluster_flow %in% as.character(command_frame$command.flow)){
+    index = which(cluster_flow == as.character(command_frame$command.flow))
+    command_vector_first_cluster[i] = as.character(command_frame$command.value[index])
+  }
+}
+
+final_clusters <- better_frame$cluster
+
+#there is a substantial difference in the total number of octets out between these two flows. 
+first_cluster_sums = c()
+second_cluster_sums = c()
+first_cluster_sums_index = 1
+second_cluster_sums_index = 1
+for(i in 1:length(final_clusters)){
+  curr_sum = sum(na.omit(no_na_rows[,i]))
+  if(final_clusters[i] == 1){
+    first_cluster_sums[first_cluster_sums_index] = curr_sum
+    first_cluster_sums_index = first_cluster_sums_index + 1
+  } else {
+    second_cluster_sums[second_cluster_sums_index] = curr_sum
+    second_cluster_sums_index = second_cluster_sums_index +1 
+  }
+}
+
+#Remember to talk to Bryan about the fact that some measurements do not keep track of command
+SELECT value FROM "ALL_PSC_br034.dmz.bridges.psc.edu"."autogen"."command" WHERE flow = 'a3e68e7e30c928d02ac08622bb08f9eef2db4d85621f3708fc085a397a09fbf6'
+
+
+plot(tree)
+```

@@ -1,0 +1,12 @@
+"","HCDataOctetsOut","OctetsRetrans","CurMSS","PipeSize","CurRTO","CongSignals","CurCwnd","CurRwinSent","MaxRwinSent","CurRwinRcvd","MaxRwinRcvd"
+"HCDataOctetsOut",0,0,1,1,1,1,1,1,0,1,1
+"OctetsRetrans",1,0,1,1,1,0,0,1,0,1,0
+"CurMSS",0,0,0,0,0,0,0,0,0,0,0
+"PipeSize",1,1,1,0,1,0,0,1,0,0,0
+"CurRTO",1,1,0,1,0,0,1,0,0,0,0
+"CongSignals",1,0,0,0,0,0,1,0,0,0,0
+"CurCwnd",1,0,1,0,1,1,0,1,0,1,1
+"CurRwinSent",1,0,0,1,0,0,0,0,1,1,0
+"MaxRwinSent",0,0,0,0,0,0,0,1,0,0,0
+"CurRwinRcvd",0,0,0,0,0,0,0,1,0,0,0
+"MaxRwinRcvd",0,0,0,0,0,0,0,0,0,0,0

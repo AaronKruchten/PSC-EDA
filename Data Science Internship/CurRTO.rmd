@@ -1,0 +1,110 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+#The current value of the retransmit timer RTO.
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+```{r,echo = FALSE}
+library(readxl)
+library(testit)
+CurRTT <- read_excel("~/Desktop/EXCEL FILES/CurRTT.xlsx")
+#find the flows in our data set that have the most common points
+flows_with_same_measurements = 40
+flow_table <- sort(table(CurRTT$Flow), decreasing = TRUE)[1:200]
+#print(length(flow_table))
+flow_table
+
+
+smoothRTT <- read_excel("/Users/aaronkruchten/Desktop/EXCEL FILES/SmoothedRound trip time.xlsx")
+smooth_table <- sort(table(smoothRTT$Flow), decreasing = TRUE)[1:flows_with_same_measurements]
+
+
+#for some reason we have a different number of measurements of smooth_RTT and curRTO for many of the flows
+assert(names(flow_table)[1:flows_with_same_measurements] == names(smooth_table)[1:flows_with_same_measurements])
+
+
+Congestion_window <- read_excel("/Users/aaronkruchten/Desktop/EXCEL FILES/congestion window.xlsx")
+congestion_window_table <- sort(table(Congestion_window$Flow), decreasing = TRUE)[1:flows_with_same_measurements]
+assert(names(smooth_table)[1:flows_with_same_measurements] == names(congestion_window_table)[1:flows_with_same_measurements])
+
+congestion_signals <- read_excel("/Users/aaronkruchten/Desktop/EXCEL FILES/congestion_signals.xlsx")
+congestion_signals_table <- sort(table(congestion_signals$Flow), decreasing = TRUE)[1:flows_with_same_measurements]
+#names(smooth_table)[1:flows_with_same_measurements] == names(congestion_signals_table)[1:flows_with_same_measurements]
+
+current_window_advertisement <- read_excel("/Users/aaronkruchten/Desktop/EXCEL FILES/Current_window_advertisement.xlsx")
+
+segments_transmitted <- read_excel("/Users/aaronkruchten/Desktop/EXCEL FILES/segment_transmitted.xlsx")
+
+
+```
+
+
+```{r, echo = FALSE}
+
+#plow currRTT of flows that occurr most often in our data set
+plot_currRT0 <-function(x){
+  new_frame <- subset.data.frame(CurRTT,CurRTT$Flow == x)
+  plot(new_frame$Time,new_frame$CurrentRTT,xlab = "Time", ylab = "Current RTO", main = "Current Round trip timer")
+}
+
+plot_smoothedRTT <- function(x){
+  new_frame <- subset.data.frame(smoothRTT,smoothRTT$Flow == x)
+  plot(new_frame$TIME,new_frame$SmoothedRTT,xlab = "Time", ylab = "Current Smoothed RTT", main = "Smoothed RTT" )
+}
+
+plot_congestion_window <- function(x){
+  new_frame <- subset.data.frame(Congestion_window,Congestion_window$Flow == x)
+  plot(new_frame$Time,new_frame$Value,xlab = "Time", ylab = "Current congestion Window",main = "Congestion Window")
+}
+
+plot_current_window_ad <- function(x){
+  new_frame <- subset.data.frame(current_window_advertisement,current_window_advertisement$Flow == x)
+  plot(new_frame$Time,new_frame$Window_ad,xlab = "Time",ylab = "Current Window advertisement",main = "Current Window Advertisement")
+}
+
+#number of segments transmitted containing at least some retransmitted data
+plot_segments_transmitted <- function(x){
+  new_frame <- subset.data.frame(segments_transmitted,segments_transmitted$Flow == x)
+  plot(new_frame$Time,new_frame$Segments_transmitted,xlab = "Time", ylab = "Segments transmitted", main = "Segments Transmitted")
+}
+
+plot_both <- function(x){
+  new_frame_one <- subset.data.frame(smoothRTT,smoothRTT$Flow == x)
+  new_frame_two <- subset.data.frame(CurRTT,CurRTT$Flow == x)
+  print("Number of data points for Smoothed RTT")
+  print(length(new_frame_one$SmoothedRTT))
+  print("Number of data points for Current RTO")
+  print(length(new_frame_two$CurrentRTT))
+  smaller_length = min(length(new_frame_one$SmoothedRTT),length(new_frame_two$CurrentRTT))
+  print(table(new_frame_one$Flow[1:smaller_length] == new_frame_two$Flow[1:smaller_length]))
+  plot(new_frame_one$SmoothedRTT[1:smaller_length],new_frame_two$CurrentRTT[1:smaller_length], xlab = "Smoothed RTT", ylab = "Current   RTO")
+}
+
+plot_congestion_signals <- function(x){
+  new_frame <- subset.data.frame(congestion_signals,congestion_signals$Flow == x)
+  plot(new_frame$Time,new_frame$Cong_Signals,xlab = "Time",ylab = "# of downward congestion signals",main = "Congestion signals")
+}
+
+#put plots side by side
+par(mfrow = c(1,2))
+
+for(i in 1:length(names(flow_table))){
+  print(names(flow_table)[i])
+  plot_currRT0(names(flow_table)[i])
+  plot_smoothedRTT(names(flow_table)[i])
+  #plot_segments_transmitted(names(flow_table)[i])
+  #plot_current_window_ad(names(flow_table)[i])
+  #plot_congestion_window(names(flow_table)[i])
+  #plot_congestion_signals(names(flow_table)[i])
+  #plot_both(names(smooth_table)[i])
+}
+
+
+print(length(names(flow_table)))
+
+```

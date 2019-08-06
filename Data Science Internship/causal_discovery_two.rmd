@@ -1,0 +1,237 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{R,echo = FALSE,message = FALSE, warnings = FALSE}
+source("/Users/aaronkruchten/Desktop/Data Science Internship/PSC interface github copy.R")
+
+library(igraph)
+library(pcalg)
+library(dplyr)
+library(RBGL)
+library(graph)
+
+#checks to see if a frame contains a zero value.
+#0 %in% frame would fail sometimes
+contains_zero <- function(frame){
+  for(i in 1:nrow(frame)){
+    for(j in 1:ncol(frame)){
+      if(frame[i,j] == 0){
+        return(TRUE)
+      }
+    }
+  }
+  return(FALSE)
+}
+
+
+#converts a frame of type double to type int to be usable with the pc algortihm and discitest
+#type int in R is a signed 32 bit integer and so has max value 2^31 - 1. If values in the frame
+#are larger than this it will truncate that value and fill in 2^31. 
+convert_to_int <- function(frame){
+  new_mat = matrix(rep(0,nrow(frame)*ncol(frame)),nrow = nrow(frame),ncol = ncol(frame))
+  mode(new_mat) <- "integer"
+  for(i in 1:nrow(frame)){
+    for(j in 1:ncol(frame)){
+      if(is.na(as.integer(frame[i,j]))){
+          new_mat[i,j] = as.integer(2^31 - 1)
+      } else {
+        new_mat[i,j] = as.integer(frame[i,j]) 
+      }
+    }
+  }
+  return(new_mat)
+}
+
+
+#removes columns in a data frame which are nonrandom and so have zero variance
+remove_zero_variance <- function(df){
+  zero_var_vector <- c()
+  vector_index = 1
+  for(i in 1:ncol(df)){
+   var = mean(na.omit(df[,i])^2) - mean(na.omit(df[,i]))^2
+   #floating point error tolerance
+   if(abs(var - 0) > 1/10 && length(table(df[,i])) > 1){
+    zero_var_vector[vector_index] = i
+    vector_index = vector_index + 1
+    }
+  }
+  return(df[,zero_var_vector])
+}
+
+
+remove_negatives <- function(frame){
+  for(i in 1:nrow(frame)){
+    for(j in 1:ncol(frame)){
+      if(!is.na(NA) && frame[i,j] < 0){
+        frame[i,j] = 0
+      }
+    }
+  }
+  return(frame)
+}
+
+#transforms a data frame to a type that can be used with the discrete conditional independence test and the pc algorithm 
+transform_frame_to_pc_usable <- function(df){
+  df$time = c()
+  df_numeric <- convert_to_numeric(df)
+  df_numeric <- impute_frame(df_numeric,10)
+  df_numeric_non_zero_var <- remove_zero_variance(df_numeric)
+  if(is.data.frame(df_numeric_non_zero_var) && ncol(df_numeric_non_zero_var) > 1){
+    names = colnames(df)
+    value_one = df$HCDataOctetsOut[1]
+    value_two = df$HCDataOctetsIn[1]
+    if("HCDataOctetsOut" %in% colnames(df_numeric_non_zero_var)){
+      df_numeric_non_zero_var$HCDataOctetsOut = c(0,diff(df_numeric_non_zero_var$HCDataOctetsOut))
+    }
+    if("HCDataOctetsIn" %in% colnames(df_numeric_non_zero_var)){
+      df_numeric_non_zero_var$HCDataOctetsIn = c(0,diff(df_numeric_non_zero_var$HCDataOctetsIn))
+    }
+    df_numeric_non_zero_var <- remove_negatives(df_numeric_non_zero_var)
+    print(contains_zero(df_numeric_non_zero_var))
+    if(contains_zero(df_numeric_non_zero_var)){
+      return(round(df_numeric_non_zero_var))
+    }
+    else{
+      #some frames cannot be used no matter how much data cleaning we did.
+      #return vector just containing dummy if this is the case
+      return(c("dummy"))
+    }
+  }
+  #some frames cannot be used no matter how much data cleaning we did.
+  #return vector just containing dummy if this is the case
+  return(c("dummy"))
+}
+
+#adjacency matrix is a submatrix of the weight matrix. Increments the values in the weight matrix that correspond to the 
+#adjacency matrix
+add_matrices <- function(weight_matrix,adjacency_matrix){
+  weight_matrix_names = colnames(weight_matrix)
+  adj_matrix_names = colnames(adjacency_matrix)
+  for(i in 1:nrow(adjacency_matrix)){
+    for(j in 1:ncol(adjacency_matrix)){
+      if(adjacency_matrix[i,j] == 1){
+        row_name_adjacency = adj_matrix_names[i]
+        col_name_adjacency = adj_matrix_names[j]
+        row_index_weight = which(weight_matrix_names == row_name_adjacency)
+        col_index_weight = which(weight_matrix_names == col_name_adjacency)
+        weight_matrix[row_index_weight,col_index_weight] = weight_matrix[row_index_weight,col_index_weight] + 1
+      }
+    }
+  }
+  return(weight_matrix)
+}
+
+
+initialize_graph <- function(frame){
+  number <- ncol(frame)
+  new_graph <- make_empty_graph(n = number)
+}
+```
+
+
+```{R,echo = FALSE, warning = FALSE,message = FALSE}
+#forces edges to be in the graph according to domain knowledge. 
+#some of these edges do not appear in the final graph. I believe this because there we no frames where both the
+#variables had nonzero variance. 
+add_knowledge <- function(usable_frame){
+  knowledge_lst = list()
+  names_vector = c("HCDataOctetsOut","OctetsRetrans","CurMSS","CurRTO","CongSignals","CurCwnd","CurRwinSent","MaxRwinSent","CurRwinRcvd","MaxRwinRcvd")
+  #force edge list
+  #these edges should always be in the graph
+  knowledge_lst[[1]] = c("OctetsRetrans","CongSignals","Timeouts","PipeSize")
+  knowledge_lst[[2]] = c("PipeSize")
+  knowledge_lst[[3]] = c("HCDataOctetsOut","OctetsRetrans","PipeSize")
+  knowledge_lst[[4]] = c("HCDataOctetsOut","OctetsRetrans","PipeSize")
+  knowledge_lst[[5]] = c("CurCwnd","CurSsthresh")
+  knowledge_lst[[6]] = c("HCDataOctetsOut")
+  knowledge_lst[[7]] = c("HCDataOctetsOut","OctetsRetrans","PipeSize","CurRwinRcvd")
+  knowledge_lst[[8]] = c("CurRwinSent")
+  knowledge_lst[[9]] = c("HCDataOctetsOut","OctetsRetrans")
+  knowledge_lst[[10]] = c("HCDataOctetsOut")
+  
+  col_names = colnames(usable_frame)
+  edge_vector <- c()
+  edge_vector_index = 1
+  for(i in 1:length(knowledge_lst)){
+    curr_measurement = names_vector[i]
+    if(curr_measurement %in% col_names && length(knowledge_lst[[i]]) >= 1){
+      curr_measurement_index = which(col_names == curr_measurement)
+      for(j in 1:length(knowledge_lst[[i]])){
+        curr_name = knowledge_lst[[i]][j]
+        if(curr_name %in% col_names){
+          index = which(col_names == curr_name)
+          edge_vector[edge_vector_index] = curr_measurement_index
+          edge_vector_index = edge_vector_index + 1
+          edge_vector[edge_vector_index] = index
+          edge_vector_index = edge_vector_index + 1
+          
+        }
+      } 
+    }
+  }
+  g <- make_empty_graph(n = ncol(usable_frame)) %>%
+    add_edges(edge_vector) %>%
+    set_vertex_attr("label", value = colnames(usable_frame))
+  adj_mat <- as_adjacency_matrix(g)
+  return(adj_mat)
+}
+
+measurements = "HCDataOctetsOut,OctetsRetrans,HCDataOctetsIn,CurMSS,PipeSize,CurRTO,CongSignals,CurCwnd,CurSsthresh,Timeouts,CurRwinSent,MaxRwinSent,ZeroRwinSent,CurRwinRcvd,MaxRwinRcvd,ZeroRwinRcvd,MaxCaCwnd"
+#measurments should be a string of measurements seperated by commas as in the interface
+#local_data should be a directory of files formed by the function query_all_single_flow in the interface
+#weight_matrix save_location is a directory to weight matrix which can be formed into an adjacency matrix and used to create a graph
+
+#because this function can take hours to run a large amount of data and flows. The weight matrix is saved and overwritten every time 
+#the DAG for  a single flow has finished. 
+form_DAG <- function(measurements,local_data,weight_matrix_save_location){
+  
+  file_names <- list.files(local_data)
+  measurement_vector <- strsplit(measurements,split = ",")
+  start_time = Sys.time()
+  weight_matrix = matrix(rep(0,length(measurement_vector[[1]])^2),nrow = length(measurement_vector[[1]]),ncol = length(measurement_vector[[1]]))
+  rownames(weight_matrix) = measurement_vector[[1]]
+  colnames(weight_matrix) = measurement_vector[[1]]
+  for(i in 1:length(file_names)){
+    initial_directory = paste(local_data,"/",sep = "")
+    final_directory = paste(initial_directory,file_names[i],sep = "")
+    print(i)
+    print(final_directory)
+    new_frame <- form_dataframe(final_directory,measurements = measurements)
+    usable_frame = transform_frame_to_pc_usable(new_frame)
+    if(usable_frame != c("dummy")){
+      suffStat = list(dm = convert_to_int(data.matrix(usable_frame)), nlev = number_of_levels(usable_frame), adaptDF = FALSE)
+      fixed_knowledge = add_knowledge(usable_frame)
+      fixed_knowledge_matrix = matrix(fixed_knowledge,nrow = ncol(usable_frame))
+      fixed_knowledge_matrix_symmetric = make_symmetric(fixed_knowledge_matrix)
+  
+      output <- pc(suffStat = suffStat,indepTest = disCItest,alpha =.001,labels = colnames(usable_frame),verbose = TRUE,fixedEdges = fixed_knowledge_matrix_symmetric)
+      adjacency_matrix <- as(output,"amat")
+      weight_matrix = add_matrices(weight_matrix,adjacency_matrix)
+      #plot(output)
+      #print("NEW GRAPH! NEW GRAPH! NEW GRAPH! NEW GRAPH! NEW GRAPH! NEW GRAPH! NEW GRAPH! NEW GRAPH!")
+      #print("NEW GRAPH! NEW GRAPH! NEW GRAPH! NEW GRAPH! NEW GRAPH! NEW GRAPH! NEW GRAPH! NEW GRAPH!")
+      #print("NEW GRAPH! NEW GRAPH! NEW GRAPH! NEW GRAPH! NEW GRAPH! NEW GRAPH! NEW GRAPH! NEW GRAPH!")
+    }
+    write.csv(weight_matrix,file = weight_matrix_save_location)
+  }
+  end_time = Sys.time()
+  print("Running Time")
+  print(end_time - start_time)
+  return(weight_matrix)
+}
+
+
+weight_matrix_discrete = weight_matrix >= 10
+weight_matrix_discrete = weight_matrix_discrete + 0
+graph <- graph_from_adjacency_matrix(weight_matrix_discrete)
+g_nel <- as_graphnel(graph)
+plot(g_nel)
+
+```
+
+
+
+

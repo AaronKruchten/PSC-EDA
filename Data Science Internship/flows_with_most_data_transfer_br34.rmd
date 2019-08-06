@@ -1,0 +1,23 @@
+
+#this file will return a list of flows that transferred a lot of data
+source("/Users/aaronkruchten/Desktop/Data Science Internship/R_query_clean.R")
+
+all_flows_br34_commands <- read.csv("/Users/aaronkruchten/Desktop/globus flows br34/flow commands br34.csv")
+
+all_flows_br34_globus_command = subset.data.frame(all_flows_br34_commands,all_flows_br34_commands$command.value == "globus-gridftp-")
+
+all_flows_br34_globus_command_lst = as.character(all_flows_br34_globus_command$command.flow)
+
+random_sample_of_flows <- read.csv("/Users/aaronkruchten/Desktop/globus flows br34/random sample of flows with dataoctets out.csv")
+sort(table(random_sample_of_flows$DataOctetsOut.sample),decreasing = TRUE)
+
+common_occuring_flows = names(sort(table(random_sample_of_flows$DataOctetsOut.sample),decreasing = TRUE))[1:1000]
+
+interesting_flow_vector = search_for_flows(all_flows_br34_globus_command_lst,common_occuring_flows)
+interesting_flows = all_flows_br34_globus_command_lst[interesting_flow_vector]
+
+#currently set to return 100 flows that return the most data
+top_hundred_interesting_flows <- interesting_flows[1:100]
+
+most_data_transfers = find_most_data_transfers(top_hundred_interesting_flows,"ALL_PSC_br034.dmz.bridges.psc.edu")
+current_interesting_flow = top_hundred_interesting_flows[27]

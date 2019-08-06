@@ -1,0 +1,58 @@
+```{R}
+library(audio)
+first_fourier_seires <- function(x){
+  first_addend = 4*sin(x)/pi
+  second_addend = 4*sin(3*x)/(3*pi)
+  third_addend = 4*sin(5*x)/5*pi
+  fourth_addend = 4*sin(7*x)/7*pi
+  return(first_addend+second_addend)
+}
+
+one_second = 42595
+
+start_time = Sys.time()
+play(sin(1:(one_second*20)/100000)*100000)
+end_time = Sys.time()
+duration = end_time - start_time
+
+audio <- load.wave("/Users/aaronkruchten/Downloads/franz-liszt-liebestraum-3 (1).wav")
+play(audio)
+
+audio_vector <- rep(0,ncol(audio)*2)
+audio_matrix <- matrix(audio_vector,nrow=2,ncol = ncol(audio))
+for(i in 1:ncol(audio_matrix)){
+  audio_matrix[1,i] = audio[1,i]
+  audio_matrix[2,i] = audio[2,i]
+}
+
+plot(c(40000:900000),audio_matrix[1,c(40000:900000)])
+
+```
+
+```{R}
+
+
+play_and_plot <- function(amplitude,period,shift,time){
+  time= seq(0,2*pi*time,.01)
+  output = amplitude*sin(period*time + shift)
+  play(output)
+  begin = head(output,n= 2000)
+  horizontal = c(1:2000)
+  plot(horizontal,begin)
+  #plot(time,output)
+}
+#time is in number of periods
+start_time = Sys.time()
+two_seconds = 60*2
+quarter_second = 60/4
+eight_second = 60/8
+play_and_plot(1,2,1,two_seconds)
+end_time = Sys.time()
+
+boolean = TRUE
+while(boolean){
+  system("say Rusty!")
+  Sys.sleep(2)
+}
+boolean = FALSE
+```

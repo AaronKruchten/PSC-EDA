@@ -1,0 +1,88 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+```{R}
+source("/Users/aaronkruchten/Desktop/Data Science Internship/PSC interface github copy.R")
+
+
+#given a data frame that contains DataOctetsOut, DataSegsOut, OctetsRetrans,SegsRetrans or any subset of these variables
+#computes the difference between these if applicable and returns a new frame
+#also OctetsRetrans and SegsRetrans are both cumulative. We transform them so that they are not.
+no_retransmitted_data <- function(df){
+  new_df = data.frame(df)
+  if(length(new_df$HCDataOctetsOut) > 0 & length(new_df$OctetsRetrans) > 0){
+    new_df$CleanOctetsOut = new_df$HCDataOctetsOut - new_df$OctetsRetrans
+  }
+  if(length(new_df$DataSegsOut) > 0 & length(new_df$SegsRetrans) > 0){
+    new_df$CleanSegsOut = new_df$DataSegsOut - new_df$SegsRetrans
+  }
+  remove_rows_vector = c()
+  remove_rows_index = 1
+  #for(i in 1:nrow(new_df)){
+   # if((!is.na(new_df$CleanSegsOut[i]) & new_df$CleanSegsOut[i] < 0) | (!is.na(new_df$CleanOctetsOut[i]) & new_df$CleanOctetsOut[i] <0)){
+    #  remove_rows_vector[remove_rows_index] = i
+     # remove_rows_index = remove_rows_index + 1
+  #  }
+  #  if(length(remove_rows_vector) >= 1 ){
+   #   new_df = new_df[-remove_rows_vector,]
+    #}
+  #}
+  return(new_df)
+}
+
+query_vector <- c("AbruptTimeouts","ActiveOpen","CERcvd","CongAvoid","CongSignals","CountRTT","CurAppRQueue","CurAppWQueue","CurCwnd","CurMSS",
+                    "CurRTO","CurReasmQueue","CurRwinRcvd","CurRwinSent","CurSsthresh","CurTimeoutCount","DSACKDups","DataOctetsIn","DataOctetsOut",
+                    "DataSegsIn","DataSegsOut","DupAckEpisodes","DupAcksIn","DupAcksOut","ECESent","ECN","ECNsignals","EarlyRetrans",
+                    "EarlyRetransDelay","ElapsedMicroSecs","ElapsedSecs","EndTime","FastRetran","HCDataOctetsIn","HCDataOctetsOut","HCSumRTT",
+                    "HCThruOctetsAcked","HCThruOctetsReceived","InRecovery","IpTosIn","IpTosOut","IpTtl","LimCwnd","LimMSS","MSSRcvd","MSSSent",
+                    "MaxAppRQueue","MaxAppWQueue","MaxCaCwnd","MaxMSS","MaxPipeSize","MaxRTO","MaxRTT","MaxReasmQueue","MaxRwinRcvd","MaxRwinSent",
+                    "MaxSsCwnd","MaxSsthresh","MinMSS","MinRTO","MinRTT","MinSsthresh","Nagle","NonRecovDA","NonRecovDAEpisodes","OctetsRetrans",
+                    "OtherReductions","OtherReductionsCM","PipeSize","PostCongCountRTT","PostCongSumRTT","PreCongSumCwnd","PreCongSumRTT","Priority",
+                    "RTTVar","RcvNxt","RcvRTT","RecInitial","RetranThresh","SACKBlocksRcvd","SACKsRcvd","SampleRTT","SegsIn","SegsOut","SegsRetrans",
+                    "SendStall","SlowStart","SmoothedRTT","SndInitial","SndLimTimeCwnd","SndLimTimePace","SndLimTimeSnd","SndLimTimeStartUp",
+                    "SndLimTimeTSODefer","SndLimTransCwnd","SndLimTransPace","SndLimTransRwin","SndLimTransSnd","SndLimTransStartUp","SndLimTransTSODefer",
+                    "SndMax","SndNxt","SndUna","SoftErrorReason","SoftErrors","SpuriousFrDetected","SpuriousRtoDetected","StartTime","StartTimeStamp",
+                    "State","SubsequentTimeouts","SumOctetsReordered","SumRTT","ThruOctetsAcked","ThruOctetsReceived","TimeStamps","Timeouts",
+                    "WillSendSACK","WillUseSACK","WinScaleRcvd","WinScaleRcvd","WinScaleSent","ZeroRwinRcvd","ZeroRwinSent","analyzed","command")
+
+all_measurements = ""
+for(i in 1:length(query_vector)){
+  if(i == 1){
+    all_measurements = paste(all_measurements,query_vector[i] ,sep = "")
+  } else {
+  all_measurements = paste(all_measurements,",",query_vector[i] ,sep = "")
+  }
+  
+}
+
+bryan_measurements = "HCDataOctetsOut,OctetsRetrans,HCDataOctetsIn,ElapsedSecs,CurMSS,PipeSize,MaxPipeSize,CurRTO,CongSignals,CurCwnd,CurSsthresh,Timeouts,CurRwinSent,MaxRwinSent,ZeroRwinSent,CurRwinRcvd,MaxRwinRcvd,ZeroRwinRcvd"
+most_data_flow <- form_dataframe("/Users/aaronkruchten/Desktop/large data flow",bryan_measurements)
+imputed_most_data_flow <- impute_frame(most_data_flow,10)
+imputed_most_data_flow <- no_retransmitted_data(imputed_most_data_flow)
+
+model <- gam(CleanOctetsOut ~ s(HCDataOctetsIn) + s(ElapsedSecs) + CurMSS + PipeSize + MaxPipeSize + CurRTO + CongSignals + s(CurCwnd) + s(CurSsthresh) + Timeouts + CurRwinSent + MaxRwinSent + ZeroRwinSent + s(CurRwinRcvd) + MaxRwinRcvd + ZeroRwinRcvd, data = imputed_most_data_flow)
+
+model_mse = mean((predict(model) - imputed_most_data_flow$CleanOctetsOut)^2)
+clean_octets_out_mean = mean(imputed_most_data_flow$CleanOctetsOut)
+dumb_mse = mean((clean_octets_out_mean - imputed_most_data_flow$CleanOctetsOut)^2)
+#model slightly better than predicting the average
+#
+plot(model)
+```
+
+
+```{R}
+lots_of_measurements = "SegsOut,DataSegsOut,HCDataOctetsOut,SegsRetrans,OctetsRetrans,SegsIn,HCDataOctetsIn,ElapsedSecs,CurMSS,PipeSize,MaxPipeSize,SmoothedRTT,CurRTO,CongSignals,CurCwnd,CurSsthresh,Timeouts,CurRwinSent,MaxRwinSent,ZeroRwinSent,CurRwinRcvd,MaxRwinRcvd,ZeroRwinRcvd,SndLimTransRwin,SndLimTransCwnd,SndLimTransSnd,SndLimtimeRwin,SndLimTimeCwnd,SndLimTimeSnd"
+
+most_data_flow_more <- form_dataframe("/Users/aaronkruchten/Desktop/large data flow",lots_of_measurements)
+imputed_most_data_flow_more <- impute_frame(most_data_flow_more,10)
+imputed_most_data_flow_more <- no_retransmitted_data(imputed_most_data_flow_more)
+library(mgcv)
+more_model <- gam(CleanOctetsOut ~ CongSignals + s(CurCwnd) + CurMSS + s(CurRTO) + s(CurRwinRcvd) + CurRwinSent + s(CurSsthresh) + s(DataSegsOut) + s(ElapsedSecs) + s(HCDataOctetsIn)  + MaxPipeSize + MaxRwinRcvd + MaxRwinSent + s(OctetsRetrans) + PipeSize + s(SegsIn) + s(SegsOut) + s(SegsRetrans) + s(SmoothedRTT) + s(SndLimTimeCwnd) + s(SndLimTimeSnd) + s(SndLimTransCwnd) + SndLimTransRwin + s(SndLimTransSnd) + Timeouts + ZeroRwinRcvd + ZeroRwinSent, data  = imputed_most_data_flow_more) 
+plot(more_model)
+more_model_mse <- mean((predict(more_model) - imputed_most_data_flow_more$CleanOctetsOut)^2)
+
+most_data_flows <- read.csv("/Users/aaronkruchten/Desktop/Most Data flows/most_data_flows.csv")
+```

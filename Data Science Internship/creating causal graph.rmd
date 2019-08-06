@@ -1,0 +1,16 @@
+```{R}
+source("/Users/aaronkruchten/Desktop/Data Science Internship/R_query_clean.R")
+library(devtools)
+library(rJava)
+install_github("bd2kccd/r-causal")
+
+library(rcausal)
+
+
+measurements_for_causal_inference = "CurRTO,CurSsthresh,CongSignals,DataOctetsIn,DataOctetsOut,DataSegsIn,DataSegsOutInRecovery,OctetsRetrans,PipeSize,SoftErrors,Timeouts"
+
+
+
+
+most_data_flow = "'8aaf8c90f6f6f9e9e5220d9c0725cf386b8c79374ac259a95900ad970c8547a1'"
+```

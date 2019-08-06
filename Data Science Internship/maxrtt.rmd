@@ -1,0 +1,20 @@
+```{r}
+sort(table(CurRTT$Flow), decreasing = TRUE)
+
+```
+
+
+```{r}
+data_frame_top_flow = subset.data.frame(CurRTT, CurRTT$Flow == "5e60c35e7149c5c3da887ecafe1f6edc37cf86477fb6e005e9d8a5575ad95ae9",main = "Most common Flow", xlab = "Time", ylab = "Current RTT")
+plot(data_frame_top_flow$Time,data_frame_top_flow$CurrentRTT)
+data_frame_second_flow = subset.data.frame(CurRTT,CurRTT$Flow == "5ad195972890bd7425d5d4dba2106b0ddac22e074be5527341d365d336ee3214")
+
+library(np)
+data_frame_second_flow$CurrentRTT = as.numeric(data_frame_second_flow$CurrentRTT)
+data_frame_second_flow$Time = as.numeric(data_frame_second_flow$Time)
+data_frame_second_flow$Flow = c()
+nonparametric_model <- npreg(CurrentRTT ~ Time, data = data_frame_second_flow)
+plot(data_frame_second_flow$Time,data_frame_second_flow$CurrentRTT, main = "Second Most Common Flow", xlab = "Time", ylab = "Current RTT", col = "blue")
+preds <- predict(nonparametric_model,newdata = data_frame_second_flow)
+lines(data_frame_second_flow$Time,preds)
+```

@@ -1,0 +1,124 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+#Flow bd4d85723b4f141d96cde95c6aed3941f25ec1624ff9ecfe46bf8d0d6156e436
+
+This flow lasted approximately two hours long and likely tranferred out a lot of data relative to many of the others in our data set. This flow was called with command globus-gridftp- and tranferred out 242213150037 data octets. We will first perform exploratory data analysis on the data transfer.
+
+```{R}
+source("/Users/aaronkruchten/Desktop/Data Science Internship/PSC R interface.R")
+flow_name = "'bd4d85723b4f141d96cde95c6aed3941f25ec1624ff9ecfe46bf8d0d6156e436'"
+database = "ALL_PSC_br034.dmz.bridges.psc.edu"
+explore_data_transfers(flow_name = flow_name,db = database)
+```
+
+```{R}
+#build nonparametric model to see what affect number of data octets that are not retransmitted
+new_congestion_measurements = "CurCwnd,CurRTO,FastRetran,Nagle,RetranThresh,SlowStart,CongAvoid,DataOctetsOut,DataSegsOut,OctetsRetrans,SegsRetrans"
+first_frame = query_by_flow(flow_name = flow_name,measurements = new_congestion_measurements,database = database)
+predicting_cleanOctets_frame = no_retransmitted_data(first_frame)
+library(mgcv)
+time_vector = predicting_cleanOctets_frame$Time
+predicting_cleanOctets_frame$Time = c()
+predicting_cleanOctets_frame$diffFastRetran = append(c(0),diff(predicting_cleanOctets_frame$FastRetran))
+predicting_cleanOctets_frame$diffSlowStart = append(c(0),diff(predicting_cleanOctets_frame$SlowStart))
+predicting_cleanOctets_frame$diffCongAvoid = append(c(0),diff(predicting_cleanOctets_frame$CongAvoid))
+
+model <- gam(CleanOctetsOut ~ s(diffCongAvoid) + s(CurCwnd) + s(CurRTO) + s(diffSlowStart) + s(diffFastRetran) + RetranThresh, data = predicting_cleanOctets_frame)
+plot(model)
+preds <- predict(model)
+mse = mean((preds - predicting_cleanOctets_frame$CleanOctetsOut)^2)
+
+preds_vs_actual <- data.frame(preds = preds,actual = predicting_cleanOctets_frame$CleanOctetsOut)
+
+simple_model <- gam(CleanOctetsOut ~ s(CurRTO), data = predicting_cleanOctets_frame)
+simple_preds <- predict(simple_model)
+simple_mse <- mean((simple_preds - predicting_cleanOctets_frame$CleanOctetsOut)^2)
+
+#curRTO is the most important variable to predict data octets out in this data set. 
+
+new_measurements = "CurRTO,SndLimTimeCwnd,SndLimTimePace,SoftErrors,DataOctetsOut,DataSegsOut,OctetsRetrans,SegsRetrans"
+second_frame = query_by_flow(flow_name = flow_name,measurements = new_measurements,database = database)
+second_frame = no_retransmitted_data(second_frame)
+second_frame$diffSndLimTimeCwnd = append(c(0),diff(second_frame$SndLimTimeCwnd))
+
+better_model <- gam(CleanOctetsOut ~ s(CurRTO) + s(diffSndLimTimeCwnd), data = second_frame)
+plot(better_model)
+
+better_model_mse <- mean((predict(better_model) - second_frame$CleanOctetsOut)^2)
+
+most_data_flows = return_globus_flows_with_most_data(200)
+```
+
+```{R}
+#new_flow 
+flow_name = "e7a458186bf729ee4f2009a36c8b2dc42c329cd5f6ada1e902d80f601c4c2131"
+database = "ALL_PSC_br034.dmz.bridges.psc.edu"
+explore_data_transfers(flow_name = flow_name,db = database)
+new_congestion_measurements = "CurCwnd,CurRTO,FastRetran,Nagle,RetranThresh,SlowStart,CongAvoid,HCDataOctetsOut,DataSegsOut,OctetsRetrans,SegsRetrans"
+first_frame = query_by_flow(flow_name, measurements = new_congestion_measurements,database = database)
+first_frame = convert_to_numeric(first_frame)
+first_frame = impute_frame(first_frame,10)
+first_frame = no_retransmitted_data(first_frame)
+
+library(mgcv)
+model_new_frame <- gam(CleanOctetsOut ~ s(CongAvoid) + s(CurCwnd) + s(CurRTO) + s(SlowStart)  + RetranThresh, data = first_frame)
+plot(model_new_frame)
+
+most_data_flows = return_globus_flows_with_most_data(1000)
+setwd("/Users/aaronkruchten/Desktop/Most Data flows")
+write.csv(most_data_flows,"most_data_flows.csv")
+```
+
+
+```{R}
+database = "ALL_PSC_br034.dmz.bridges.psc.edu"
+query_all_single_flow("e7a458186bf729ee4f2009a36c8b2dc42c329cd5f6ada1e902d80f601c4c2131",database = database,"/Users/aaronkruchten/Desktop/large data flow",username = "reader",password = "listen")
+```
+
+
+
+```{R}
+
+query_vector <- c("AbruptTimeouts","ActiveOpen","CERcvd","CongAvoid","CongSignals","CountRTT","CurAppRQueue","CurAppWQueue","CurCwnd","CurMSS",
+                    "CurRTO","CurReasmQueue","CurRwinRcvd","CurRwinSent","CurSsthresh","CurTimeoutCount","DSACKDups","DataOctetsIn","DataOctetsOut",
+                    "DataSegsIn","DataSegsOut","DupAckEpisodes","DupAcksIn","DupAcksOut","ECESent","ECN","ECNsignals","EarlyRetrans",
+                    "EarlyRetransDelay","ElapsedMicroSecs","ElapsedSecs","EndTime","FastRetran","HCDataOctetsIn","HCDataOctetsOut","HCSumRTT",
+                    "HCThruOctetsAcked","HCThruOctetsReceived","InRecovery","IpTosIn","IpTosOut","IpTtl","LimCwnd","LimMSS","MSSRcvd","MSSSent",
+                    "MaxAppRQueue","MaxAppWQueue","MaxCaCwnd","MaxMSS","MaxPipeSize","MaxRTO","MaxRTT","MaxReasmQueue","MaxRwinRcvd","MaxRwinSent",
+                    "MaxSsCwnd","MaxSsthresh","MinMSS","MinRTO","MinRTT","MinSsthresh","Nagle","NonRecovDA","NonRecovDAEpisodes","OctetsRetrans",
+                    "OtherReductions","OtherReductionsCM","PipeSize","PostCongCountRTT","PostCongSumRTT","PreCongSumCwnd","PreCongSumRTT","Priority",
+                    "RTTVar","RcvNxt","RcvRTT","RecInitial","RetranThresh","SACKBlocksRcvd","SACKsRcvd","SampleRTT","SegsIn","SegsOut","SegsRetrans",
+                    "SendStall","SlowStart","SmoothedRTT","SndInitial","SndLimTimeCwnd","SndLimTimePace","SndLimTimeSnd","SndLimTimeStartUp",
+                    "SndLimTimeTSODefer","SndLimTransCwnd","SndLimTransPace","SndLimTransRwin","SndLimTransSnd","SndLimTransStartUp","SndLimTransTSODefer",
+                    "SndMax","SndNxt","SndUna","SoftErrorReason","SoftErrors","SpuriousFrDetected","SpuriousRtoDetected","StartTime","StartTimeStamp",
+                    "State","SubsequentTimeouts","SumOctetsReordered","SumRTT","ThruOctetsAcked","ThruOctetsReceived","TimeStamps","Timeouts",
+                    "WillSendSACK","WillUseSACK","WinScaleRcvd","WinScaleRcvd","WinScaleSent","ZeroRwinRcvd","ZeroRwinSent","analyzed","command")
+
+all_measurements = ""
+for(i in 1:length(query_vector)){
+  if(i == 1){
+    all_measurements = paste(all_measurements,query_vector[i] ,sep = "")
+  } else {
+  all_measurements = paste(all_measurements,",",query_vector[i] ,sep = "")
+  }
+  
+}
+
+bryan_measurements = "HCDataOctetsOut,OctetsRetrans,HCDataOctetsIn,ElapsedSecs,CurMSS,PipeSize,MaxPipeSize,CurRTO,CongSignals,CurCwnd,CurSsthresh,Timeouts,CurRwinSent,MaxRwinSent,ZeroRwinSent,CurRwinRcvd,MaxRwinRcvd,ZeroRwinRcvd"
+most_data_flow <- form_dataframe("/Users/aaronkruchten/Desktop/large data flow",bryan_measurements)
+imputed_most_data_flow <- impute_frame(most_data_flow,10)
+imputed_most_data_flow <- no_retransmitted_data(imputed_most_data_flow)
+library(mgcv)
+model <- gam(CleanOctetsOut ~ s(HCDataOctetsIn) + s(ElapsedSecs) + CurMSS + PipeSize + MaxPipeSize + CurRTO + CongSignals + s(CurCwnd) + s(CurSsthresh) + Timeouts + CurRwinSent + MaxRwinSent + ZeroRwinSent + s(CurRwinRcvd) + MaxRwinRcvd + ZeroRwinRcvd, data = imputed_most_data_flow)
+
+model_mse = mean((predict(model) - imputed_most_data_flow$CleanOctetsOut)^2)
+clean_octets_out_mean = mean(imputed_most_data_flow$CleanOctetsOut)
+dumb_mse = mean((clean_octets_out_mean - imputed_most_data_flow$CleanOctetsOut)^2)
+#model slightly better than predicting the average
+plot(model)
+```
+
+

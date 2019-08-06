@@ -1,0 +1,46 @@
+```{R}
+"
+globus_flows <- read.csv("/Users/aaronkruchten/Downloads/2019-05-29-09-59 Chronograf Data.csv")
+globus_flows$time = c()
+globus_flows$command.value = c()
+#globus_flows = unique(globus_flows)
+#length(globus_flows$command.flow)
+#globus_set = set(globus_flows)
+
+#assert(length(globus_flows$command.flow) == 73798)
+#Why is this not true length(globus_flows$command.flow = 73814). The value 73798 is the value in the table. Don't know why these are different
+
+library(sets)
+
+random_sample <- read.csv("/Users/aaronkruchten/Downloads/2019-05-29-10-01 Chronograf Data.csv")
+random_sample$time = c()
+top_flows = sort(table(random_sample$command.sample), decreasing = TRUE)
+top_flow_names = names(top_flows)
+
+#index_vector for interesting flows 
+interesting_flows <- c()
+
+index = 1
+for(i in 1:length(globus_flows$command.flow)){
+  if(globus_flows$command.flow[i] %in% top_flows){
+    print("here")
+    interesting_flows[index] = i
+    index = index + 1
+  }
+}
+interesting_flows
+"
+```
+
+```{R}
+all_globus_flows_br34 <- read.csv("/Users/aaronkruchten/Downloads/2019-05-29-10-14 Chronograf Data.csv")
+#table(all_globus_flows_br34$command.flow)
+length(all_globus_flows_br34$command.flow)
+
+flow = "'c5347eb103c59707fdba659d18bf7736048a07447b52b66a02475de229932d78'"
+m = "CountRTT,CongSignals,CurRTO,SmoothedRTT"
+db = 'ALL_PSC_br034.dmz.bridges.psc.edu'
+interesting_flow <- query_by_flow(flow_name = flow,measurements = m,database = db)
+View(interesting_flows)
+
+```

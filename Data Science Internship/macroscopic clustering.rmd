@@ -1,0 +1,94 @@
+
+```{R}
+
+clustering_flows <- list.files("/Users/aaronkruchten/Desktop/clustering flows")
+
+directory = "/Users/aaronkruchten/Desktop/clustering flows/"
+
+macroscopic_model_estimator <- function(flow_names,directory){
+  p_vector = c()
+  C = sqrt(3/2)
+  mss_index = 1
+  MSS_vector = c()
+  command_vector = c()
+  for(i in 1:length(flow_names)){
+    curr_directory = paste(directory,flow_names[i],sep = "")
+    measurements = "HCDataOctetsOut,HCDataOctetsIn,CurMSS,SmoothedRTT"
+    cluster_frame <- form_dataframe(curr_directory,measurements)
+    cluster_frame$time = c()
+    cluster_frame = convert_to_numeric(cluster_frame)
+    BW = cluster_frame$HCDataOctetsOut + cluster_frame$HCDataOctetsIn
+    RTT = cluster_frame$SmoothedRTT
+    MSS = cluster_frame$CurMSS
+    command_file = paste(curr_directory,"/","'",flow_names[i],"'","_command.csv",sep = "")
+    command_frame <- read.csv(command_file)
+    curr_command = command_frame$value[1]
+    print(flow_names[i])
+    print(i)
+    if (is.null(curr_command)){
+      command_vector[i] = NA
+    } else {
+      command_vector[i] = as.character(curr_command)
+    }
+    MSS_vector[i] = mean(na.omit(MSS))
+    p = mean((C/(BW * RTT/MSS))^2)
+    p_vector[i] = p
+  }
+  result = list()
+  result[["P vector"]] = p_vector
+  result[["MSS vector"]] = MSS_vector
+  print(command_vector)
+  result[["command vector"]] = command_vector
+  return(result)
+}
+
+clustering_flows_output <- macroscopic_model_estimator(clustering_flows,directory)
+
+random_flows <- list.files("/Users/aaronkruchten/Desktop/Random sample flows")[1:250]
+random_flows_directory = "/Users/aaronkruchten/Desktop/Random sample flows/"
+random_flows_output <- macroscopic_model_estimator(random_flows,random_flows_directory)
+
+p_vector_clustering <- clustering_flows_output[[1]]
+MSS_vector_clustering <- clustering_flows_output[[2]]
+command_vector_clustering <- clustering_flows_output[[3]]
+
+p_vector_random <- random_flows_output[[1]]
+MSS_vector_random <- random_flows_output[[2]]
+command_vector_random <- random_flows_output[[3]]
+
+true_false = is.na(command_vector_clustering)
+for(i in 1:length(true_false)){
+  if(true_false[i] == TRUE){
+    command_vector_clustering[i] = "ERROR"
+  }
+}
+
+bad_p_clustering = clustering_flows_output$`P vector` > 1 | is.na(clustering_flows_output$`P vector`)
+
+clustering_frame <- data.frame(MSS = MSS_vector_clustering, commands = command_vector_clustering, p_values = clustering_flows_output$`P vector`,p_are_bad = bad_p_clustering)
+library(knitr)
+kable(table(clustering_frame$MSS,clustering_frame$commands))
+
+bad_p = random_flows_output$`P vector` > 1 | is.na(random_flows_output$`P vector`)
+
+random_frame <- data.frame(MSS = MSS_vector_random, commands = command_vector_random, p_values = random_flows_output$`P vector`,p_are_bad = bad_p)
+
+kable(table(random_frame$MSS,random_frame$p_are_bad))
+
+p_error_vector = c()
+p_error_index = 1
+for(i in 1:length(true_false_vector)){
+  if(!is.na(true_false_vector[i]) && true_false_vector[i] == TRUE){
+    p_error_vector[p_error_index] = i
+    p_error_index = p_error_index + 1
+  }
+}
+
+
+length(p_error_vector)
+length(true_false_vector)
+
+
+
+
+```

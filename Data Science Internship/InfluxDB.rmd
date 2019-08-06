@@ -1,0 +1,25 @@
+
+```{R}
+library(rjson)
+flow_1_start_time <- fromJSON(file = "/Users/aaronkruchten/Desktop/JSON/flow1_StartTime.json")
+flow_1_start_time_frame <- as.data.frame(flow_1_start_time)
+
+flow_1_thru_octets_received <- fromJSON(file = "/Users/aaronkruchten/Desktop/JSON/flow1_ThruOctetsReceived.json")
+flow_1_thru_octets_received_frame <- as.data.frame(flow_1_thru_octets_received)
+
+
+times_series_tutorial <- read.csv("/Users/aaronkruchten/Desktop/Data analysis internship/opsd_germany_daily.csv")
+View(times_series_tutorial)
+library(reticulate)
+
+```
+
+
+
+```{r}
+library(reticulate)
+source_python("/Users/aaronkruchten/Desktop/JSON/python R file.py")
+
+
+````
+

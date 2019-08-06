@@ -1,0 +1,204 @@
+```{R}
+library(influxdbr)
+library(testit)
+#flow_name should be the name of the flow in single quotes and double quotes
+#GOOD Example: "'flow_name'" 
+#BAD Example: "flow_name"
+#BAD Example: 'flow_name'
+
+#measurements shoud be a character array/string of comma separated measurements with no space
+#GOOD Example: "EarlyRetrans,CountRTT,ECN"
+
+#database is a string of the database name we are considering
+
+#it looks like from the data flows are often measured about once a minute. The way this function is written it will break if we have two measurements in the same minute. For that reason we remove one of the measurements that occur twice in one minute. I believe these occurr very rarely and we are not losing much data by doing this. We could solve this problem in a couple other ways but I believe this would lead to either a much less time efficient function or a resulting data frame that is much larger than necessary.
+
+
+#function returns a time series data frame for the given measurments. Removes all rows with Just NAs
+query_by_flow <- function(flow_name,measurements,database){
+  #create and call query
+  begin_query = "Select value FROM "
+  middle_query = " WHERE flow = "
+  query_string = paste(begin_query,measurements,middle_query,flow_name,sep="")
+  connection <- influx_connection(scheme = "http",host = "influx.blearndata.net",port = 8086,user = "reader",pass = "listen")
+  new_query = influx_query(connection,db = database,query = query_string,return_xts = FALSE)
+  
+  #initialize data frame
+  data_frame = new_query[[1]]
+  data_frame$statement_id = c()
+  data_frame$series_tags = c()
+  data_frame$series_partial = c()
+
+
+  #create time series skipping by minute for oldest and most recent time observed in our data
+  min_time = min(data_frame$time)
+  max_time = max(data_frame$time)
+  time_values = format(seq(min_time,max_time+60,by = "min"),'%Y-%m-%d %H:%M')
+
+  
+  #remove duplicates
+  data_frame$time = format(data_frame$time,'%Y-%m-%d %H:%M')
+  data_frame = unique(data_frame)
+  
+  #parse measurments and create new matrix
+  measurement_vector <- strsplit(x = measurements,split = ",")[[1]]
+  number_of_time_measuresments = length(time_values)
+  number_of_measurements = length(measurement_vector)
+  new_matrix = matrix(nrow = length(time_values),ncol = length(measurement_vector) + 1)
+  new_matrix[,1] = time_values
+  data_frame_index = 1
+  
+  #fill in the new matrix. Puts in NA if we don't have a measurement for that minute
+  for(i in 2:(number_of_measurements +1)){
+    for(j in 1:number_of_time_measuresments){
+      #this assert will often fail if there are typos in the metrics inputted
+      assert(j <= length(time_values))
+      if(data_frame_index <= length(data_frame$time) && data_frame$time[data_frame_index] == time_values[j]){
+        new_matrix[j,i] = data_frame$value[data_frame_index] 
+        data_frame_index = data_frame_index + 1
+      } else {
+        new_matrix[j,i] = NA
+        } 
+    }
+  }
+  #convert matrix to data frame and name columns
+  names = append(c("Time"),sort(measurement_vector, decreasing = FALSE))
+  final_frame = as.data.frame(new_matrix)
+  colnames(final_frame) = names
+  print("length of time column")
+  l = length(final_frame$Time)
+  print(l)
+  print("Final value")
+  print(final_frame$Time[l])
+  return(remove_na_rows(final_frame))
+}
+
+#helper function to remove rows that only have NAs
+remove_na_rows <- function(data_frame){
+  drop_vector = c()
+  drop_vector_index = 1
+  for(i in 1:nrow(data_frame)){
+    if(sum(is.na(data_frame[i,2:ncol(data_frame)])) == (ncol(data_frame) -1)){
+      drop_vector[drop_vector_index] = i
+      drop_vector_index = drop_vector_index + 1
+    }
+  }
+  if(length(drop_vector) == 0){
+    return(data_frame)
+  } else {
+    data_frame = data_frame[-drop_vector,]
+    return(data_frame)
+  }
+}
+
+
+
+
+#queries all measurements for a given flow and saves them into separate csv files into a location defined by the user
+#same conventions as in query_by_flow
+#save_location should be a string of a file location
+query_all_single_flow <- function(flow_name,database,save_location){
+  setwd(save_location)
+  begin_query = "Select value FROM "
+  middle_query = " WHERE flow = "
+  query_vector <- c("AbruptTimeouts","ActiveOpen","CERcvd","CongAvoid","CongSignals","CountRTT","CurAppRQueue","CurAppWQueue","CurCwnd","CurMSS","CurRTO","CurReasmQueue","CurRwinRcvd","CurRwinSent","CurSsthresh","CurTimeoutCount","DSACKDups","DataOctetsIn","DataOctetsOut","DataSegsIn","DataSegsOut","DupAckEpisodes","DupAcksIn","DupAcksOut","ECESent","ECN","ECNsignals","EarlyRetrans","EarlyRetransDelay","ElapsedMicroSecs","ElapsedSecs","EndTime","FastRetran","HCDataOctetsIn","HCDataOctetsOut","HCSumRTT","HCThruOctetsAcked","HCThruOctetsReceived","InRecovery","IpTosIn","IpTosOut","IpTtl","LimCwnd","LimMSS","MSSRcvd","MSSSent","MaxAppRQueue","MaxAppWQueue","MaxCaCwnd","MaxMSS","MaxPipeSize","MaxRTO","MaxRTT","MaxReasmQueue","MaxRwinRcvd","MaxRwinSent","MaxSsCwnd","MaxSsthresh","MinMSS","MinRTO","MinRTT","MinSsthresh","Nagle","NonRecovDA","NonRecovDAEpisodes","OctetsRetrans","OtherReductions","OtherReductionsCM","PipeSize","PostCongCountRTT","PostCongSumRTT","PreCongSumCwnd","PreCongSumRTT","Priority","RTTVar","RcvNxt","RcvRTT","RecInitial","RetranThresh","SACKBlocksRcvd","SACKsRcvd","SampleRTT","SegsIn","SegsOut","SegsRetrans","SendStall","SlowStart","SmoothedRTT","SndInitial","SndLimTimeCwnd","SndLimTimePace","SndLimTimeSnd","SndLimTimeStartUp","SndLimTimeTSODefer","SndLimTransCwnd","SndLimTransPace","SndLimTransRwin","SndLimTransSnd","SndLimTransStartUp","SndLimTransTSODefer","SndMax","SndNxt","SndUna","SoftErrorReason","SoftErrors","SpuriousFrDetected","SpuriousRtoDetected","StartTime","StartTimeStamp","State","SubsequentTimeouts","SumOctetsReordered","SumRTT","ThruOctetsAcked","ThruOctetsReceived","TimeStamps","Timeouts","WillSendSACK","WillUseSACK","WinScaleRcvd","WinScaleRcvd","WinScaleSent","ZeroRwinRcvd","ZeroRwinSent","analyzed","command","dest_ip","dest_port","path","src_ip","src_port")
+  connection <- influx_connection(scheme = "http",host = "influx.blearndata.net",port = 8086,user = "reader",pass = "listen")
+  for(i in 1:length(query_vector)){
+    measurement = query_vector[i]
+    query_string = paste(begin_query,measurement,middle_query,flow_name,sep="")
+    new_query = influx_query(connection,db = database,query = query_string,return_xts = FALSE)
+    new_frame = new_query[[1]]
+    new_frame$statement_id = c()
+    new_frame$series_names = c()
+    new_frame$series_tags = c()
+    new_frame$series_partial = c()
+    file_name = paste(flow_name,"_",query_vector[i],".csv",sep="")
+    write.csv(new_frame,file_name)
+  }
+}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{R}
+
+random_sample_br34_countRTT <- read.csv("/Users/aaronkruchten/Downloads/2019-05-29-10-41 Chronograf Data.csv")
+random_sample_br34_countRTT$time = c()
+random_sample_br34_countRTT$CountRTT.sample = c()
+sorted_flow_table = sort(table(random_sample_br34_countRTT$CountRTT.flow),decreasing = TRUE)
+sorted_names = names(sorted_flow_table)
+
+
+search_for_flows <- function(array_one,array_two){
+  index_vector = c()
+  index = 1
+  for(i in 1:length(array_one)){
+    if(array_one[i] %in% array_two){
+      index_vector[index] = i
+      index = index + 1
+    }
+  }
+  return(index_vector)
+}
+
+
+#analysis of  the flows that occurs most often in br34 with command globus-gridftp-. 
+
+
+flow_name = paste("'",toString(random_sample_br34_countRTT$CountRTT.flow[57]),"'",sep ="")
+
+#query a flow and the measurements you want and write it to a csv to a chosen directory
+query_interesting_flows <- function(flow_name,measurements,directory,database){
+  setwd(directory)
+  flow_file <- query_by_flow(flow_name,measurements,database)
+  name = paste(flow_name,"important_measurements_br34",".csv",sep = "_")
+  write.csv(flow_file,name)
+}
+  
+#may want to look if in recovery is behaving correctly
+  
+#need to review fast retrans algorithm
+  
+#What is early retrans? It is not in the rfc
+  
+m = "AbruptTimeouts,CERcvd,CongAvoid,CongOverCount,CongSignals,CurAppRQueue,CurAppWQueue,CurCwnd,CurMSS,CurRTO,CurRwinRcvd,CurRwinSent,CurSsthresh,CurTimeoutCount,DataOctetsOut,DataOctetsIn,DataSegsIn,DataSegsOut,DSACKDups,DupAckEpisodes,DupAcksIn,DupAcksOut,ECESent,ECN,ECNsignals,EarlyRetrans,EarlyRetransDelay,FastRetran,HCDataOctetsIn,HCDataOctetsOut,HCThruOctetsAcked,HCThruOctetsReceived,InRecovery,IpTosIn,IpTosOut,MaxAppWQueue,MaxAppRQueue,Nagle,NonRecovDA,OctetsRetrans,OtherReductions,PipeSize,SampleRTT,SegsIn,SegsOut,SegsRetrans,SlowStart,SoftErrors,SpuriousFrDetected,ThruOctetsAcked,ThruOctetsReceived"
+
+interesting_flows_vector = search_for_flows(unique(random_sample_br34_countRTT$CountRTT.flow),sorted_names[1:1000])
+
+
+for(i in 1:length(sorted_names[1:2])){
+  flow_name_string = paste("'",sorted_names[i],"'",sep ="")
+  print(flow_name_string)
+  query_interesting_flows(flow_name = flow_name_string,measurements = m,"/Users/aaronkruchten/Desktop/globus flows br34","ALL_PSC_br034.dmz.bridges.psc.edu")
+}
+
+```
+
+
+
+```{R}
+top_flow <- read.csv("/Users/aaronkruchten/Desktop/globus flows br34/'3a63adbbf20bc4e31124b17246d2758b18afdbf92f5091261eac359049128733'_important_measurements_br34_.csv")
+View(top_flow)
+#Top flow is very long approximately 3 months. Appears to have a very small data transfer of 7 octets per minute. 
+
+second_flow <- read.csv("/Users/aaronkruchten/Desktop/globus flows br34/'c39b0e7ca61b04df4a62a5052e46b2dae12667c9b8a45aad0a9324f0fea9bdd1'_important_measurements_br34_.csv")
+View(second_flow)
+
+```

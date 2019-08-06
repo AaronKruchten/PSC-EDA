@@ -1,0 +1,40 @@
+```{R}
+
+query_vector <- c("AbruptTimeouts","ActiveOpen","CERcvd","CongAvoid","CongSignals","CountRTT","CurAppRQueue","CurAppWQueue","CurCwnd","CurMSS",
+                    "CurRTO","CurReasmQueue","CurRwinRcvd","CurRwinSent","CurSsthresh","CurTimeoutCount","DSACKDups","DataOctetsIn","DataOctetsOut",
+                    "DataSegsIn","DataSegsOut","DupAckEpisodes","DupAcksIn","DupAcksOut","ECESent","ECN","ECNsignals","EarlyRetrans",
+                    "EarlyRetransDelay","ElapsedMicroSecs","ElapsedSecs","EndTime","FastRetran","HCDataOctetsIn","HCDataOctetsOut","HCSumRTT",
+                    "HCThruOctetsAcked","HCThruOctetsReceived","InRecovery","IpTosIn","IpTosOut","IpTtl","LimCwnd","LimMSS","MSSRcvd","MSSSent",
+                    "MaxAppRQueue","MaxAppWQueue","MaxCaCwnd","MaxMSS","MaxPipeSize","MaxRTO","MaxRTT","MaxReasmQueue","MaxRwinRcvd","MaxRwinSent",
+                    "MaxSsCwnd","MaxSsthresh","MinMSS","MinRTO","MinRTT","MinSsthresh","Nagle","NonRecovDA","NonRecovDAEpisodes","OctetsRetrans",
+                    "OtherReductions","OtherReductionsCM","PipeSize","PostCongCountRTT","PostCongSumRTT","PreCongSumCwnd","PreCongSumRTT","Priority",
+                    "RTTVar","RcvNxt","RcvRTT","RecInitial","RetranThresh","SACKBlocksRcvd","SACKsRcvd","SampleRTT","SegsIn","SegsOut","SegsRetrans",
+                    "SendStall","SlowStart","SmoothedRTT","SndInitial","SndLimTimeCwnd","SndLimTimePace","SndLimTimeSnd","SndLimTimeStartUp",
+                    "SndLimTimeTSODefer","SndLimTransCwnd","SndLimTransPace","SndLimTransRwin","SndLimTransSnd","SndLimTransStartUp","SndLimTransTSODefer",
+                    "SndMax","SndNxt","SndUna","SoftErrorReason","SoftErrors","SpuriousFrDetected","SpuriousRtoDetected","StartTime","StartTimeStamp",
+                    "State","SubsequentTimeouts","SumOctetsReordered","SumRTT","ThruOctetsAcked","ThruOctetsReceived","TimeStamps","Timeouts",
+                    "WillSendSACK","WillUseSACK","WinScaleRcvd","WinScaleRcvd","WinScaleSent","ZeroRwinRcvd","ZeroRwinSent","analyzed","command")
+
+all_measurements = ""
+for(i in 1:length(query_vector)){
+  if(i == 1){
+    all_measurements = paste(all_measurements,query_vector[i] ,sep = "")
+  } else {
+  all_measurements = paste(all_measurements,",",query_vector[i] ,sep = "")
+  }
+  
+}
+
+bryan_measurements = "HCDataOctetsOut,OctetsRetrans,HCDataOctetsIn,ElapsedSecs,CurMSS,PipeSize,MaxPipeSize,CurRTO,CongSignals,CurCwnd,CurSsthresh,Timeouts,CurRwinSent,MaxRwinSent,ZeroRwinSent,CurRwinRcvd,MaxRwinRcvd,ZeroRwinRcvd"
+most_data_flow <- form_dataframe("/Users/aaronkruchten/Desktop/large data flow",bryan_measurements)
+imputed_most_data_flow <- impute_frame(most_data_flow,10)
+imputed_most_data_flow <- no_retransmitted_data(imputed_most_data_flow)
+library(mgcv)
+model <- gam(CleanOctetsOut ~ s(HCDataOctetsIn) + s(ElapsedSecs) + CurMSS + PipeSize + MaxPipeSize + CurRTO + CongSignals + s(CurCwnd) + s(CurSsthresh) + Timeouts + CurRwinSent + MaxRwinSent + ZeroRwinSent + s(CurRwinRcvd) + MaxRwinRcvd + ZeroRwinRcvd, data = imputed_most_data_flow)
+
+model_mse = mean((predict(model) - imputed_most_data_flow$CleanOctetsOut)^2)
+clean_octets_out_mean = mean(imputed_most_data_flow$CleanOctetsOut)
+dumb_mse = mean((clean_octets_out_mean - imputed_most_data_flow$CleanOctetsOut)^2)
+#model slightly better than predicting the average
+plot(model)
+```

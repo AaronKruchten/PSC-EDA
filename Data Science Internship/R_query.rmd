@@ -1,0 +1,212 @@
+```{r}
+library(influxdbr)
+library(sets)
+
+random_sample <- read.csv("/Users/aaronkruchten/Desktop/EXCEL FILES/2019-05-24-14-52 Chronograf Data.csv")
+random_sample$time = c()
+random_set = set(random_sample)
+sort(table(random_sample$CountRTT.sample), decreasing = TRUE)
+
+
+most_interesting_flows <- names(sort(table(random_sample$CountRTT.sample), decreasing = TRUE)[1:100])
+most_interesting_flows
+
+
+top_flow_csv <- read.csv("/Users/aaronkruchten/Downloads/2019-05-24-15-11 Chronograf Data.csv")
+
+connection <- influx_connection(scheme = "http",host = "influx.blearndata.net",port = 8086,user = "reader",pass = "listen")
+
+##############################################
+#Becoming familiar with how influxdbr works
+##############################################
+
+connection <- influx_connection(scheme = "http",host = "influx.blearndata.net",port = 8086,user = "reader",pass = "listen")
+
+test_query = influx_query(connection,db = "ALL_PSC_br034.dmz.bridges.psc.edu",query = "SELECT value FROM command WHERE flow = '3a63adbbf20bc4e31124b17246d2758b18afdbf92f5091261eac359049128733'")
+
+
+test_query_two = influx_query(connection,db = "ALL_PSC_br034.dmz.bridges.psc.edu",query = "SELECT value FROM EarlyRetrans WHERE flow = '3a63adbbf20bc4e31124b17246d2758b18afdbf92f5091261eac359049128733'")
+new_vector <- c()
+test_query[[1]]$CountRTT[1] + 5
+new_vector[1] = test_query[[1]]$CountRTT[1]
+
+test_query_two[[1]]$EarlyRetrans[1:10]
+
+test_query_three = unique(influx_query(connection,db = "ALL_PSC_br034.dmz.bridges.psc.edu",query = "SELECT value FROM CountRTT WHERE flow = '3a63adbbf20bc4e31124b17246d2758b18afdbf92f5091261eac359049128733'",return_xts = FALSE))
+
+View(test_query_three[[1]])
+
+table(test_query_three[[1]]$series_names)
+
+max(table(test_query_three[[1]]$))
+which.max(table(test_query_three[[1]]$series_names))
+
+library(sets)
+countRTT_time = test_query_three[[1]]$time[1:77023]
+EarlyRetrans_time = test_query_three[[1]]$time[77024:length(test_query_three[[1]]$time)]
+countRTT_set = set(countRTT_time)
+EarlyRetrans_set = set(EarlyRetrans_time)
+set_is_subset(EarlyRetrans_set,countRTT_set)
+intersect_set = set_intersection(EarlyRetrans_set,countRTT_set)
+
+
+
+begin_query = "SELECT value FROM "
+measurements = "EarlyRetrans,CountRTT"
+end_query = " WHERE flow = "
+flow_name = "'3a63adbbf20bc4e31124b17246d2758b18afdbf92f5091261eac359049128733'"
+
+assert(paste(begin_query,measurements,end_query,flow_name,sep="") == "SELECT value FROM EarlyRetrans,CountRTT WHERE flow = '3a63adbbf20bc4e31124b17246d2758b18afdbf92f5091261eac359049128733'")
+
+for(i in 2:(2+1) ){
+  print(i)
+}
+
+min_time = min(countRTT_time)
+print(min_time)
+max_time = max(countRTT_time)
+time_values = format(seq(min_time,max_time,by = "min"),'%Y-%m-%d %H:%M')
+View(time_values)
+
+###########################################
+#End learning how influxdbr works
+###########################################
+
+#flow_name should be the name of the flow in single quotes and double quotes
+#GOOD Example: "'flow_name'" 
+#BAD Example: "flow_name"
+#BAD Example: 'flow_name'
+
+#measurements shoud be a character array/string of comma separated measurements with no space
+#GOOD Example: "EarlyRetrans,CountRTT,ECN"
+
+#database is a string of the database name we are considering
+
+#it looks like from the data flows are often measured about once a minute. The way this function is written it will break if we have two measurements in the same minute. For that reason we remove one of the measurements that occur twice in one minute. I believe these occurr very rarely and we are not losing much data by doing this. We could solve this problem in a couple other ways but I believe this would lead to either a much less time efficient function or a resulting data frame that is much larger than necessary.
+
+
+#function returns a time series data frame. Removes all rows with Just NAs
+query_by_flow <- function(flow_name,measurements,database){
+  begin_query = "Select value FROM "
+  middle_query = " WHERE flow = "
+  query_string = paste(begin_query,measurements,middle_query,flow_name,sep="")
+  connection <- influx_connection(scheme = "http",host = "influx.blearndata.net",port = 8086,user = "reader",pass = "listen")
+  new_query = influx_query(connection,db = database,query = query_string,return_xts = FALSE)
+  
+  data_frame = new_query[[1]]
+  data_frame$statement_id = c()
+  data_frame$series_tags = c()
+  data_frame$series_partial = c()
+
+  #create time series skipping by minute for oldest and most recent time observed in our data
+  min_time = min(data_frame$time)
+  max_time = max(data_frame$time)
+  time_values = format(seq(min_time,max_time,by = "min"),'%Y-%m-%d %H:%M')
+  
+  #remove duplicates
+  data_frame$time = format(data_frame$time,'%Y-%m-%d %H:%M')
+  data_frame = unique(data_frame)
+  
+  measurement_vector <- strsplit(x = measurements,split = ",")[[1]]
+  number_of_time_measuresments = length(time_values)
+  number_of_measurements = length(measurement_vector)
+  new_matrix = matrix(nrow = length(time_values),ncol = length(measurement_vector) + 1)
+  new_matrix[,1] = time_values
+  data_frame_index = 1
+  
+  #fill in the new data frame. Puts in NA if we don't have a measurement for that minute
+  for(i in 2:(number_of_measurements +1)){
+    for(j in 1:number_of_time_measuresments){
+      print(length(data_frame$time))
+      print(data_frame_index)
+      assert(data_frame_index <= length(data_frame$time))
+      assert(j <= length(time_values))
+      if(data_frame$time[data_frame_index] == time_values[j]){
+        new_matrix[j,i] = data_frame$value[data_frame_index] 
+        data_frame_index = data_frame_index + 1
+      } else {
+        new_matrix[j,i] = NA
+      }
+    }
+  }
+  names = append(c("Time"),sort(measurement_vector, decreasing = FALSE))
+  final_frame = as.data.frame(new_matrix)
+  colnames(final_frame) = names
+  return(remove_na_rows(final_frame))
+}
+
+#helper function to remove rows that only have NAs
+remove_na_rows <- function(data_frame){
+  drop_vector = c()
+  drop_vector_index = 1
+  for(i in 1:nrow(data_frame)){
+    if(sum(is.na(data_frame[i,2:ncol(data_frame)])) == (ncol(data_frame) -1)){
+      drop_vector[drop_vector_index] = i
+      drop_vector_index = drop_vector_index + 1
+    }
+  }
+  data_frame = data_frame[-drop_vector,]
+  return(data_frame)
+}
+
+
+measurement_frame = query_by_flow("'3a63adbbf20bc4e31124b17246d2758b18afdbf92f5091261eac359049128733'","EarlyRetrans,CountRTT","ALL_PSC_br034.dmz.bridges.psc.edu")
+View(measurement_frame)
+
+
+measurements_string = "CurRTO,CurRwinSent,DataOctetsIn,DataOctetsOut,DataSegsIn,DataSegsOut,DupAckEpisodes,EarlyRetrans,FastRetran,MaxRTO,MaxRTT,OctetsRetrans,SegsOut,SlowStart,SmoothedRTT"
+big_test = query_by_flow("'3a63adbbf20bc4e31124b17246d2758b18afdbf92f5091261eac359049128733'",measurements_string,"ALL_PSC_br034.dmz.bridges.psc.edu")
+View(big_test)
+
+single_test = query_by_flow("'3a63adbbf20bc4e31124b17246d2758b18afdbf92f5091261eac359049128733'","CountRTT","ALL_PSC_br034.dmz.bridges.psc.edu")
+View(single_test)
+
+
+#same conventions as in query_by_flow
+query_all_single_flow <- function(flow_name,database){
+  setwd("/Users/aaronkruchten/Desktop/query_files")
+  begin_query = "Select value FROM "
+  middle_query = " WHERE flow = "
+  query_vector <- c("AbruptTimeouts","ActiveOpen","CERcvd","CongAvoid","CongSignals","CountRTT","CurAppRQueue","CurAppWQueue","CurCwnd","CurMSS","CurRTO","CurReasmQueue","CurRwinRcvd","CurRwinSent","CurSsthresh","CurTimeoutCount","DSACKDups","DataOctetsIn","DataOctetsOut","DataSegsIn","DataSegsOut","DupAckEpisodes","DupAcksIn","DupAcksOut","ECESent","ECN","ECNsignals","EarlyRetrans","EarlyRetransDelay","ElapsedMicroSecs","ElapsedSecs","EndTime","FastRetran","HCDataOctetsIn","HCDataOctetsOut","HCSumRTT","HCThruOctetsAcked","HCThruOctetsReceived","InRecovery","IpTosIn","IpTosOut","IpTtl","LimCwnd","LimMSS","MSSRcvd","MSSSent","MaxAppRQueue","MaxAppWQueue","MaxCaCwnd","MaxMSS","MaxPipeSize","MaxRTO","MaxRTT","MaxReasmQueue","MaxRwinRcvd","MaxRwinSent","MaxSsCwnd","MaxSsthresh","MinMSS","MinRTO","MinRTT","MinSsthresh","Nagle","NonRecovDA","NonRecovDAEpisodes","OctetsRetrans","OtherReductions","OtherReductionsCM","PipeSize","PostCongCountRTT","PostCongSumRTT","PreCongSumCwnd","PreCongSumRTT","Priority","RTTVar","RcvNxt","RcvRTT","RecInitial","RetranThresh","SACKBlocksRcvd","SACKsRcvd","SampleRTT","SegsIn","SegsOut","SegsRetrans","SendStall","SlowStart","SmoothedRTT","SndInitial","SndLimTimeCwnd","SndLimTimePace","SndLimTimeSnd","SndLimTimeStartUp","SndLimTimeTSODefer","SndLimTransCwnd","SndLimTransPace","SndLimTransRwin","SndLimTransSnd","SndLimTransStartUp","SndLimTransTSODefer","SndMax","SndNxt","SndUna","SoftErrorReason","SoftErrors","SpuriousFrDetected","SpuriousRtoDetected","StartTime","StartTimeStamp","State","SubsequentTimeouts","SumOctetsReordered","SumRTT","ThruOctetsAcked","ThruOctetsReceived","TimeStamps","Timeouts","WillSendSACK","WillUseSACK","WinScaleRcvd","WinScaleRcvd","WinScaleSent","ZeroRwinRcvd","ZeroRwinSent","analyzed","command","dest_ip","dest_port","path","src_ip","src_port")
+  connection <- influx_connection(scheme = "http",host = "influx.blearndata.net",port = 8086,user = "reader",pass = "listen")
+  for(i in 1:length(query_vector)){
+    measurement = query_vector[i]
+    query_string = paste(begin_query,measurement,middle_query,flow_name,sep="")
+    new_query = influx_query(connection,db = database,query = query_string,return_xts = FALSE)
+    new_frame = new_query[[1]]
+    new_frame$statement_id = c()
+    new_frame$series_names = c()
+    new_frame$series_tags = c()
+    new_frame$series_partial = c()
+    file_name = paste(flow_name,"_",query_vector[i],".csv",sep="")
+    write.csv(new_frame,file_name)
+  }
+}
+
+query_all_single_flow("'3a63adbbf20bc4e31124b17246d2758b18afdbf92f5091261eac359049128733'","ALL_PSC_br034.dmz.bridges.psc.edu")
+
+
+
+"
+#krsh
+3a63adbbf20bc4e31124b17246d2758b18afdbf92f5091261eac359049128733
+
+
+
+"
+
+commands <- read.csv("/Users/aaronkruchten/Downloads/2019-05-28-15-36 Chronograf Data.csv")
+
+commands$time = c()
+commands = unique(commands)
+View(commands)
+library(knitr)
+kable(table(commands$command.value))
+
+commands_br33 <- read.csv("/Users/aaronkruchten/Downloads/2019-05-28-17-12 Chronograf Data.csv")
+commands_br33$time <- c()
+commands_br33 = unique(commands_br33)
+kable(table(commands_br33$command.value))
+
+
+```
