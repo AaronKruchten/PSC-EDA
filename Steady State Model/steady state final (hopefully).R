@@ -60,7 +60,7 @@ compute_lambda <- function(frame){
   one_minute = 60
   frame$averageAmountOfTimeBetweenPacketLoss <- frame$SegsRetransDiff/one_minute
   lambda = nrow(frame)/(sum(frame$averageAmount))
-  return(lambda/50)
+  return(lambda)
 }
 
 
